@@ -1,0 +1,23 @@
+name: schedule-meeting-polite-user
+description: Test that the bot can handle a meeting scheduling request from a polite, cooperative user
+channel: sms
+
+userBot:
+  goal: >
+    You want to schedule a team meeting for next Tuesday at 2pm.
+    There will be 5 attendees. You want it to last 1 hour.
+  persona: >
+    You're polite and cooperative. You answer questions directly
+    but don't volunteer extra information unless asked.
+
+requirements:
+  - The bot should confirm the meeting details before scheduling
+  - The bot should ask about all necessary details (date, time, duration, attendees)
+  - The conversation should feel natural, not like a form fill
+  - The bot should not assume information that wasn't provided
+
+turnLimit: 15
+
+hooks:
+  before: "echo 'Setting up test environment...'"
+  after: "echo 'Cleaning up...'"
