@@ -7,11 +7,8 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 
 export interface BotConfig {
   port: number;
-  anthropic: {
-    apiKey: string;
-    model: string;
-    maxTokens: number;
-  };
+  model: string;
+  maxTokens: number;
   tms: {
     url: string;
   };
@@ -41,22 +38,13 @@ export function loadConfig(): BotConfig {
   const parsed = yaml.load(raw) as Record<string, unknown>;
   const resolved = resolveDeep(parsed) as Record<string, unknown> & BotConfig;
 
-  if (!resolved.anthropic?.apiKey) {
-    throw new Error(
-      'Missing Anthropic API key. Set ANTHROPIC_API_KEY env var or configure it in config.yaml.',
-    );
-  }
-
   return {
-    port: resolved.port ?? 3000,
-    anthropic: {
-      apiKey: resolved.anthropic.apiKey,
-      model: resolved.anthropic.model ?? 'claude-sonnet-4-5-20250929',
-      maxTokens: resolved.anthropic.maxTokens ?? 1024,
-    },
+    port: (resolved.port as number) ?? 3000,
+    model: (resolved.model as string) ?? 'anthropic:claude-sonnet-4-6',
+    maxTokens: (resolved.maxTokens as number) ?? 1024,
     tms: {
       url: (resolved.tms as { url?: string })?.url ?? 'http://localhost:4000',
     },
-    systemPrompt: resolved.systemPrompt ?? 'You are a helpful assistant.',
+    systemPrompt: (resolved.systemPrompt as string) ?? 'You are a helpful assistant.',
   };
 }

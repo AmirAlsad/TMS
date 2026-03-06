@@ -1,3 +1,57 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+@layer base {
+  * {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  html,
+  body,
+  #root {
+    @apply h-full;
+  }
+
+  body {
+    @apply bg-stone-100 dark:bg-[#0c0d14] text-slate-900 dark:text-slate-100;
+  }
+}
+
+@layer components {
+  .scrollbar-thin::-webkit-scrollbar {
+    width: 5px;
+  }
+  .scrollbar-thin::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    @apply bg-black/10 dark:bg-white/10 rounded-full;
+  }
+  .scrollbar-thin::-webkit-scrollbar-thumb:hover {
+    @apply bg-black/20 dark:bg-white/20;
+  }
+
+  .phone-shadow {
+    box-shadow:
+      0 0 0 1px rgba(0, 0, 0, 0.08),
+      0 20px 40px -8px rgba(0, 0, 0, 0.3),
+      0 0 80px -20px rgba(99, 102, 241, 0.12);
+  }
+  .dark .phone-shadow {
+    box-shadow:
+      0 0 0 1px rgba(255, 255, 255, 0.06),
+      0 20px 60px -8px rgba(0, 0, 0, 0.7),
+      0 0 80px -20px rgba(99, 102, 241, 0.1);
+  }
+
+  .dot-grid {
+    background-image: radial-gradient(circle, #d4d4d8 1px, transparent 1px);
+    background-size: 20px 20px;
+  }
+  .dark .dot-grid {
+    background-image: radial-gradient(circle, rgba(255, 255, 255, 0.035) 1px, transparent 1px);
+    background-size: 20px 20px;
+  }
+}

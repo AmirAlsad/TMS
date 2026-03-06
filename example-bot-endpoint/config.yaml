@@ -1,19 +1,10 @@
-# Example Bot Endpoint Configuration
-
-# Port the bot server listens on
 port: 3000
+model: anthropic:claude-sonnet-4-6
+maxTokens: 1024
 
-# Anthropic API configuration
-anthropic:
-  apiKey: ${ANTHROPIC_API_KEY}
-  model: claude-sonnet-4-6
-  maxTokens: 1024
-
-# TMS server URL for log forwarding
 tms:
   url: http://localhost:4000
 
-# System prompt for the bot
 systemPrompt: |
   You are a helpful assistant in a text messaging conversation.
   Keep your responses concise and conversational, as they will be

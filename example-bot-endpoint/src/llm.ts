@@ -1,13 +1,14 @@
-import Anthropic from '@anthropic-ai/sdk';
-import type { MessageParam } from '@anthropic-ai/sdk/resources/messages.js';
+import { createProviderRegistry, generateText, type ModelMessage } from 'ai';
+import { anthropic } from '@ai-sdk/anthropic';
+import { openai } from '@ai-sdk/openai';
 import type { BotConfig } from './config.js';
 
-let client: Anthropic;
+const registry = createProviderRegistry({ anthropic, openai });
 
-const history = new Map<string, MessageParam[]>();
+const history = new Map<string, ModelMessage[]>();
 
-export function initLlm(config: BotConfig): void {
-  client = new Anthropic({ apiKey: config.anthropic.apiKey });
+export function initLlm(_config: BotConfig): void {
+  // No client initialization needed with AI SDK — uses env vars automatically
 }
 
 export async function chat(
@@ -18,22 +19,19 @@ export async function chat(
   const channelHistory = history.get(channel) ?? [];
   channelHistory.push({ role: 'user', content: message });
 
-  const response = await client.messages.create({
-    model: config.anthropic.model,
-    max_tokens: config.anthropic.maxTokens,
+  const { text } = await generateText({
+    model: registry.languageModel(
+      config.model as Parameters<typeof registry.languageModel>[0],
+    ),
+    maxOutputTokens: config.maxTokens,
     system: config.systemPrompt,
     messages: channelHistory,
   });
 
-  const block = response.content[0];
-  if (block.type !== 'text') {
-    throw new Error(`Unexpected response content type: ${block.type}`);
-  }
-
-  channelHistory.push({ role: 'assistant', content: block.text });
+  channelHistory.push({ role: 'assistant', content: text });
   history.set(channel, channelHistory);
 
-  return block.text;
+  return text;
 }
 
 export function clearHistory(channel?: string): void {

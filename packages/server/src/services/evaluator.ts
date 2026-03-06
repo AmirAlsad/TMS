@@ -1,6 +1,6 @@
-import Anthropic from '@anthropic-ai/sdk';
-import OpenAI from 'openai';
+import { generateText } from 'ai';
 import type { Message, TmsConfig, EvalRequirement, Classification } from '@tms/shared';
+import { resolveModel } from './ai-registry.js';
 
 export interface JudgeInput {
   transcript: Message[];
@@ -106,71 +106,22 @@ function parseJudgeResponse(text: string, input: JudgeInput): JudgeOutput {
   };
 }
 
-async function callAnthropicJudge(
-  config: TmsConfig,
-  prompt: { system: string; user: string },
-): Promise<string> {
-  const judgeConfig = config.judge;
-  const client = new Anthropic({
-    apiKey: judgeConfig?.apiKey || process.env.ANTHROPIC_API_KEY,
-  });
-
-  const model = judgeConfig?.model || 'claude-sonnet-4-20250514';
-
-  const response = await client.messages.create({
-    model,
-    max_tokens: 4096,
-    system: prompt.system,
-    messages: [{ role: 'user', content: prompt.user }],
-  });
-
-  const textBlock = response.content.find((block) => block.type === 'text');
-  if (!textBlock || textBlock.type !== 'text') {
-    throw new Error('No text response from Anthropic judge');
-  }
-
-  return textBlock.text;
-}
-
-async function callOpenAIJudge(
-  config: TmsConfig,
-  prompt: { system: string; user: string },
-): Promise<string> {
-  const judgeConfig = config.judge;
-  const client = new OpenAI({
-    apiKey: judgeConfig?.apiKey || process.env.OPENAI_API_KEY,
-  });
-
-  const model = judgeConfig?.model || 'gpt-4o';
-
-  const response = await client.chat.completions.create({
-    model,
-    response_format: { type: 'json_object' },
-    messages: [
-      { role: 'system', content: prompt.system },
-      { role: 'user', content: prompt.user },
-    ],
-  });
-
-  const content = response.choices[0]?.message?.content;
-  if (!content) {
-    throw new Error('No response from OpenAI judge');
-  }
-
-  return content;
-}
-
 export async function evaluateTranscript(
   config: TmsConfig,
   input: JudgeInput,
 ): Promise<JudgeOutput> {
   const prompt = buildPrompt(input);
-  const provider = config.judge?.provider || 'anthropic';
 
-  const responseText =
-    provider === 'openai'
-      ? await callOpenAIJudge(config, prompt)
-      : await callAnthropicJudge(config, prompt);
+  if (!config.judge) {
+    throw new Error('Judge config is required for evaluation');
+  }
 
-  return parseJudgeResponse(responseText, input);
+  const { text } = await generateText({
+    model: resolveModel(config.judge.model),
+    system: prompt.system,
+    messages: [{ role: 'user', content: prompt.user }],
+    maxOutputTokens: 4096,
+  });
+
+  return parseJudgeResponse(text, input);
 }

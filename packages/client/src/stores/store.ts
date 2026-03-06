@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import type { Message, LogEntry, Channel, EvalResult } from '@tms/shared';
 
 export type AppMode = 'playground' | 'automated';
+export type Theme = 'light' | 'dark';
 
 export interface EvalStatus {
   id: string;
@@ -11,14 +12,21 @@ export interface EvalStatus {
   totalTurns: number;
 }
 
+function getInitialTheme(): Theme {
+  if (typeof window === 'undefined') return 'light';
+  const stored = localStorage.getItem('tms-theme');
+  if (stored === 'light' || stored === 'dark') return stored;
+  return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+}
+
 interface TmsStore {
   messages: Message[];
   logs: LogEntry[];
   channel: Channel;
   botEndpoint: string;
   showConfig: boolean;
+  theme: Theme;
 
-  // Eval state
   mode: AppMode;
   evalSpecs: string[];
   currentEval: EvalStatus | null;
@@ -31,8 +39,9 @@ interface TmsStore {
   toggleConfig: () => void;
   clearMessages: () => void;
   clearLogs: () => void;
+  setTheme: (theme: Theme) => void;
+  toggleTheme: () => void;
 
-  // Eval actions
   setMode: (mode: AppMode) => void;
   setEvalSpecs: (specs: string[]) => void;
   startEval: (eval_: EvalStatus) => void;
@@ -42,14 +51,14 @@ interface TmsStore {
   clearEval: () => void;
 }
 
-export const useStore = create<TmsStore>((set) => ({
+export const useStore = create<TmsStore>((set, get) => ({
   messages: [],
   logs: [],
   channel: 'sms',
   botEndpoint: 'http://localhost:3000/chat',
   showConfig: false,
+  theme: getInitialTheme(),
 
-  // Eval state
   mode: 'playground',
   evalSpecs: [],
   currentEval: null,
@@ -62,8 +71,16 @@ export const useStore = create<TmsStore>((set) => ({
   toggleConfig: () => set((s) => ({ showConfig: !s.showConfig })),
   clearMessages: () => set({ messages: [] }),
   clearLogs: () => set({ logs: [] }),
+  setTheme: (theme) => {
+    localStorage.setItem('tms-theme', theme);
+    document.documentElement.classList.toggle('dark', theme === 'dark');
+    set({ theme });
+  },
+  toggleTheme: () => {
+    const next = get().theme === 'light' ? 'dark' : 'light';
+    get().setTheme(next);
+  },
 
-  // Eval actions
   setMode: (mode) => set({ mode }),
   setEvalSpecs: (specs) => set({ evalSpecs: specs }),
   startEval: (eval_) => set({ currentEval: eval_, messages: [] }),

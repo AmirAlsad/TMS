@@ -37,9 +37,7 @@ export const evalSpecSchema = z.object({
 });
 
 export const judgeConfigSchema = z.object({
-  provider: z.enum(['anthropic', 'openai']),
-  model: z.string().optional(),
-  apiKey: z.string().optional(),
+  model: z.string(),
 });
 
 export const evalResultSchema = z.object({
@@ -68,9 +66,7 @@ export const tmsConfigSchema = z.object({
   }),
   userBot: z
     .object({
-      provider: z.enum(['anthropic', 'openai']),
-      model: z.string().optional(),
-      apiKey: z.string().optional(),
+      model: z.string(),
       systemPrompt: z.string().optional(),
     })
     .optional(),

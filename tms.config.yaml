@@ -1,31 +1,16 @@
-# TMS Configuration
-# All options shown with their defaults. Uncomment and modify as needed.
-
-# Bot endpoint - the target chatbot your TMS instance communicates with (required)
 bot:
   endpoint: "http://localhost:3000/chat"
   method: POST
-  # headers:
-  #   Authorization: "Bearer ${BOT_API_KEY}"
-  #   X-Custom-Header: "value"
 
-# User bot - LLM that simulates a real user during automated evals
 userBot:
-  provider: anthropic           # 'anthropic' or 'openai'
-  model: claude-sonnet-4-6  # default for anthropic; 'gpt-4o' for openai
-  apiKey: ${ANTHROPIC_API_KEY}  # supports ${ENV_VAR} interpolation
+  model: "anthropic:claude-sonnet-4-6"
   systemPrompt: "You are simulating a real user in a text message conversation with a bot."
 
-# Judge - LLM that evaluates conversation transcripts against requirements
 judge:
-  provider: anthropic           # 'anthropic' or 'openai'
-  model: claude-sonnet-4-6    # default for anthropic; 'gpt-4o' for openai
-  apiKey: ${ANTHROPIC_API_KEY}  # falls back to ANTHROPIC_API_KEY or OPENAI_API_KEY env vars
+  model: "anthropic:claude-sonnet-4-6"
 
-# Log ingestion from your backend
 logs:
   enabled: true
 
-# Server settings
 server:
   port: 4000

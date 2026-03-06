@@ -57,9 +57,7 @@ export interface EvalResult {
 }
 
 export interface JudgeConfig {
-  provider: 'anthropic' | 'openai';
-  model?: string;
-  apiKey?: string;
+  model: string;
 }
 
 export interface TmsConfig {
@@ -69,9 +67,7 @@ export interface TmsConfig {
     headers?: Record<string, string>;
   };
   userBot?: {
-    provider: 'anthropic' | 'openai';
-    model?: string;
-    apiKey?: string;
+    model: string;
     systemPrompt?: string;
   };
   judge?: JudgeConfig;

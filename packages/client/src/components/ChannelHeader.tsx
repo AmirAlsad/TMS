@@ -7,13 +7,16 @@ interface ChannelHeaderProps {
 export function ChannelHeader({ channel }: ChannelHeaderProps) {
   if (channel === 'whatsapp') {
     return (
-      <div className="bg-emerald-700 text-white px-4 py-2.5 flex items-center gap-3">
-        <div className="w-8 h-8 rounded-full bg-emerald-500 flex items-center justify-center text-sm font-bold">
+      <div className="bg-[#075e54] dark:bg-[#1f2c34] px-5 pt-14 pb-3 flex items-center gap-3">
+        <div
+          className="w-9 h-9 rounded-full bg-[#25D366]/20
+                      flex items-center justify-center text-[#25D366] text-sm font-bold"
+        >
           B
         </div>
         <div>
-          <p className="text-sm font-medium">Bot</p>
-          <p className="text-[11px] text-emerald-200">online</p>
+          <p className="text-sm font-semibold text-white">Bot</p>
+          <p className="text-[11px] text-emerald-300/70">online</p>
         </div>
       </div>
     );
@@ -21,11 +24,21 @@ export function ChannelHeader({ channel }: ChannelHeaderProps) {
 
   // SMS
   return (
-    <div className="bg-gray-100 border-b px-4 py-2.5 flex items-center gap-3">
-      <div className="w-8 h-8 rounded-full bg-gray-400 flex items-center justify-center text-white text-sm font-bold">
+    <div
+      className="bg-slate-50/95 dark:bg-slate-800/95 backdrop-blur-xl
+                  border-b border-slate-200/50 dark:border-slate-700/50
+                  px-5 pt-14 pb-3 flex items-center gap-3"
+    >
+      <div
+        className="w-9 h-9 rounded-full bg-gradient-to-br from-indigo-400 to-indigo-600
+                    flex items-center justify-center text-white text-sm font-bold shadow-sm"
+      >
         B
       </div>
-      <p className="text-sm font-medium text-gray-800">Bot</p>
+      <div>
+        <p className="text-sm font-semibold text-slate-900 dark:text-white">Bot</p>
+        <p className="text-[11px] text-slate-400 dark:text-slate-500">SMS</p>
+      </div>
     </div>
   );
 }

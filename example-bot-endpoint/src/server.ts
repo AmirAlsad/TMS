@@ -35,7 +35,7 @@ app.post('/chat', async (req, res) => {
 
 app.listen(config.port, () => {
   log('info', `Bot endpoint started on http://localhost:${config.port}/chat`, {
-    model: config.anthropic.model,
+    model: config.model,
     tmsUrl: config.tms.url,
   });
 });

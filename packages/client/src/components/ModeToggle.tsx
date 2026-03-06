@@ -22,16 +22,24 @@ export function ModeToggle() {
   };
 
   return (
-    <div className="flex rounded-md border text-sm overflow-hidden">
+    <div className="flex rounded-xl bg-slate-100 dark:bg-slate-800 p-0.5 text-xs font-semibold">
       <button
         onClick={() => handleToggle('playground')}
-        className={`px-3 py-1 ${mode === 'playground' ? 'bg-blue-500 text-white' : 'text-gray-600 hover:bg-gray-50'}`}
+        className={`px-3 py-1.5 rounded-[10px] transition-all ${
+          mode === 'playground'
+            ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm'
+            : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300'
+        }`}
       >
         Playground
       </button>
       <button
         onClick={() => handleToggle('automated')}
-        className={`px-3 py-1 border-l ${mode === 'automated' ? 'bg-blue-500 text-white' : 'text-gray-600 hover:bg-gray-50'}`}
+        className={`px-3 py-1.5 rounded-[10px] transition-all ${
+          mode === 'automated'
+            ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm'
+            : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300'
+        }`}
       >
         Automated
       </button>
