@@ -21,7 +21,7 @@ export function createServer(config: TmsConfig) {
 
   app.use('/api/message', createMessageRouter(config, broadcast));
   app.use('/api/logs', createLogsRouter(broadcast));
-  app.use('/api/eval', createEvalRouter());
+  app.use('/api/eval', createEvalRouter(config, broadcast));
   app.use('/api/config', createConfigRouter(config));
 
   return { app, server, wss };

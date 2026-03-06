@@ -3,6 +3,7 @@ import path from 'node:path';
 import { parse as parseYaml } from 'yaml';
 import type { TmsConfig } from '@tms/shared';
 import { DEFAULT_PORT } from '@tms/shared';
+import { findProjectRoot } from './project-root.js';
 
 function resolveEnvVars(value: string): string {
   return value.replace(/\$\{(\w+)\}/g, (_match, varName) => {
@@ -24,7 +25,7 @@ function resolveEnvVarsDeep(obj: unknown): unknown {
 }
 
 export function loadConfig(): TmsConfig {
-  const cwd = process.cwd();
+  const cwd = findProjectRoot();
   const yamlPath = path.join(cwd, 'tms.config.yaml');
   const jsonPath = path.join(cwd, 'tms.config.json');
 

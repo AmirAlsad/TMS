@@ -36,6 +36,30 @@ export const evalSpecSchema = z.object({
     .optional(),
 });
 
+export const judgeConfigSchema = z.object({
+  provider: z.enum(['anthropic', 'openai']),
+  model: z.string().optional(),
+  apiKey: z.string().optional(),
+});
+
+export const evalResultSchema = z.object({
+  id: z.string(),
+  specName: z.string(),
+  status: z.enum(['running', 'completed', 'failed']),
+  classification: z.enum(['passed', 'needs_review', 'failed']).optional(),
+  requirements: z.array(
+    z.object({
+      description: z.string(),
+      classification: z.enum(['passed', 'needs_review', 'failed']).optional(),
+      reasoning: z.string().optional(),
+    }),
+  ),
+  transcript: z.array(messageSchema),
+  startedAt: z.string(),
+  completedAt: z.string().optional(),
+  error: z.string().optional(),
+});
+
 export const tmsConfigSchema = z.object({
   bot: z.object({
     endpoint: z.string().url(),
@@ -44,12 +68,13 @@ export const tmsConfigSchema = z.object({
   }),
   userBot: z
     .object({
-      provider: z.enum(['builtin', 'custom']),
+      provider: z.enum(['anthropic', 'openai']),
       model: z.string().optional(),
       apiKey: z.string().optional(),
-      endpoint: z.string().url().optional(),
+      systemPrompt: z.string().optional(),
     })
     .optional(),
+  judge: judgeConfigSchema.optional(),
   logs: z
     .object({
       enabled: z.boolean().default(true),

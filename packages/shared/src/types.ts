@@ -53,6 +53,13 @@ export interface EvalResult {
   transcript: Message[];
   startedAt: string;
   completedAt?: string;
+  error?: string;
+}
+
+export interface JudgeConfig {
+  provider: 'anthropic' | 'openai';
+  model?: string;
+  apiKey?: string;
 }
 
 export interface TmsConfig {
@@ -62,11 +69,12 @@ export interface TmsConfig {
     headers?: Record<string, string>;
   };
   userBot?: {
-    provider: 'builtin' | 'custom';
+    provider: 'anthropic' | 'openai';
     model?: string;
     apiKey?: string;
-    endpoint?: string;
+    systemPrompt?: string;
   };
+  judge?: JudgeConfig;
   logs?: {
     enabled: boolean;
   };
@@ -75,11 +83,24 @@ export interface TmsConfig {
   };
 }
 
+export interface ConversationResult {
+  transcript: Message[];
+  turnCount: number;
+  goalCompleted: boolean;
+  error?: string;
+}
+
+export interface HookResult {
+  stdout: string;
+  stderr: string;
+}
+
 // WebSocket message types
 export type WsMessageType =
   | 'user:message'
   | 'bot:message'
   | 'log:entry'
+  | 'eval:started'
   | 'eval:status'
   | 'eval:result';
 

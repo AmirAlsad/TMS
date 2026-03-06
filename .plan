@@ -1,0 +1,144 @@
+# Server Automation Engine - Implementation Plan
+
+## Overview
+Implement the three Phase 2 server services (user-bot, conversation loop, hooks) and update shared types/schemas to support automated evaluations.
+
+---
+
+## 1. Update Shared Types & Schemas (`packages/shared/src/types.ts` + `schemas.ts`)
+
+### Types changes:
+- Expand `TmsConfig.userBot` to support both Anthropic and OpenAI providers:
+  ```ts
+  userBot?: {
+    provider: 'anthropic' | 'openai';
+    model?: string;       // defaults per provider
+    apiKey?: string;       // from ${ENV_VAR} interpolation
+    systemPrompt?: string; // base system prompt override
+  };
+  ```
+  - Remove 'builtin' | 'custom' provider enum, replace with 'anthropic' | 'openai'
+  - Remove `endpoint` field (not needed since we use official SDKs)
+
+- Add `ConversationResult` type for conversation loop return value:
+  ```ts
+  interface ConversationResult {
+    transcript: Message[];
+    turnCount: number;
+    goalCompleted: boolean;
+    error?: string;
+  }
+  ```
+
+- Add new WsMessageType: `'eval:started'`
+
+### Schema changes:
+- Update `tmsConfigSchema.userBot` to match the new type
+
+---
+
+## 2. Lifecycle Hooks (`packages/server/src/services/hooks.ts`)
+
+Simple service, implement first since it has no LLM dependencies.
+
+- `runHook(command: string): Promise<{ stdout: string; stderr: string }>`
+  - Uses `child_process.execFile` with shell via `exec` for running shell commands
+  - Returns stdout/stderr
+  - Throws if exit code is non-zero (with stdout/stderr in error message)
+  - Has a configurable timeout (default 30s)
+
+---
+
+## 3. User Bot Service (`packages/server/src/services/user-bot.ts`)
+
+### Design:
+- `UserBot` class with a `generateReply(transcript: Message[], evalSpec: EvalSpec): Promise<string>` method
+- Constructor takes `TmsConfig['userBot']` config
+- Internally creates the appropriate LLM client based on provider
+
+### System prompt construction:
+- Base prompt: instructs the LLM to act as a text message user
+- Injects eval spec's `goal` and `persona`
+- Includes instructions for:
+  - Wait detection: respond with `[WAIT]` when the bot seems to be processing/doing background work
+  - Goal completion: respond with `[GOAL_COMPLETE]` when the goal has been achieved
+- These special tokens are parsed by the conversation loop
+
+### LLM integration:
+- **Anthropic**: `new Anthropic({ apiKey })` -> `client.messages.create({ model, system, messages, max_tokens: 1024 })`
+- **OpenAI**: `new OpenAI({ apiKey })` -> `client.chat.completions.create({ model, messages: [{ role: 'system', content }, ...history] })`
+- Convert `Message[]` transcript to the appropriate provider's message format
+
+### Dependencies to install:
+- `@anthropic-ai/sdk` in `packages/server`
+- `openai` in `packages/server`
+
+---
+
+## 4. Conversation Loop (`packages/server/src/services/conversation.ts`)
+
+### Design:
+- `runConversation(config: TmsConfig, evalSpec: EvalSpec, broadcast: BroadcastFn): Promise<ConversationResult>`
+- Main loop:
+  1. UserBot generates first message based on goal/persona
+  2. Broadcast `user:message` via WebSocket
+  3. Send to target bot via `sendToBot()`
+  4. Broadcast `bot:message` via WebSocket
+  5. Send bot response back to UserBot for next reply
+  6. Check for `[WAIT]` -> pause with configurable timeout (default 5s), then ask user bot to try again
+  7. Check for `[GOAL_COMPLETE]` -> end conversation with `goalCompleted: true`
+  8. Check turn count against `turnLimit` -> end if exceeded
+  9. Repeat from step 2
+- Returns `ConversationResult` with full transcript
+
+### Wait handling:
+- When user bot returns content containing `[WAIT]`, don't send to target bot
+- Wait configurable period, then ask user bot to generate again with the same transcript
+- Max consecutive waits: 3, then proceed normally
+
+---
+
+## 5. Wire Up Eval Route (`packages/server/src/routes/eval.ts`)
+
+- Update `createEvalRouter` to accept `config` and `broadcast` params
+- `POST /api/eval/run` accepts an eval spec (YAML string or JSON body)
+- Calls `runHook` for `before` hook if present
+- Calls `runConversation`
+- Calls `runHook` for `after` hook if present
+- Returns `EvalResult`
+- Broadcasts `eval:started` and `eval:status` updates via WebSocket
+
+### Update `server.ts`:
+- Pass `config` and `broadcast` to `createEvalRouter(config, broadcast)`
+
+---
+
+## 6. Install Dependencies
+
+```bash
+cd packages/server && pnpm add @anthropic-ai/sdk openai
+```
+
+---
+
+## File Changes Summary
+
+| File | Action |
+|------|--------|
+| `packages/shared/src/types.ts` | Modify - update userBot type, add ConversationResult, add WsMessageType |
+| `packages/shared/src/schemas.ts` | Modify - update userBot schema |
+| `packages/server/src/services/hooks.ts` | Implement - shell command runner |
+| `packages/server/src/services/user-bot.ts` | Implement - LLM user simulator |
+| `packages/server/src/services/conversation.ts` | Implement - conversation loop |
+| `packages/server/src/routes/eval.ts` | Modify - wire up eval execution |
+| `packages/server/src/server.ts` | Modify - pass config+broadcast to eval router |
+| `packages/server/package.json` | Modified by pnpm add |
+
+## Order of Implementation
+1. Install SDK dependencies
+2. Shared types & schemas
+3. Hooks service
+4. User bot service
+5. Conversation loop
+6. Eval route wiring
+7. Build & typecheck

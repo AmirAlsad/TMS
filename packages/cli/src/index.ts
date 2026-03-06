@@ -1,4 +1,10 @@
+import dotenv from 'dotenv';
 import { Command } from 'commander';
+import { findProjectRoot } from '@tms/server/services/project-root';
+import { registerStartCommand } from './commands/start.js';
+import { registerRunCommand } from './commands/run.js';
+
+dotenv.config({ path: `${findProjectRoot()}/.env` });
 
 const program = new Command();
 
@@ -7,22 +13,7 @@ program
   .description('Text Messaging Simulator — test and evaluate conversational AI')
   .version('0.1.0');
 
-program
-  .command('start')
-  .description('Start the TMS server and open the UI')
-  .option('-p, --port <port>', 'Server port', '4000')
-  .action((_options) => {
-    // Phase 4: launch server + open browser
-    console.log('TMS start is not yet implemented. Use `pnpm dev` from the project root.');
-  });
-
-program
-  .command('run')
-  .description('Run an evaluation spec')
-  .argument('<spec>', 'Path to the YAML evaluation spec')
-  .action((_spec) => {
-    // Phase 4: headless eval runner
-    console.log('TMS run is not yet implemented.');
-  });
+registerStartCommand(program);
+registerRunCommand(program);
 
 program.parse();
