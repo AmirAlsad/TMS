@@ -9,6 +9,7 @@ export interface BotConfig {
   port: number;
   model: string;
   maxTokens: number;
+  maxSteps: number;
   tms: {
     url: string;
   };
@@ -42,6 +43,7 @@ export function loadConfig(): BotConfig {
     port: (resolved.port as number) ?? 3000,
     model: (resolved.model as string) ?? 'anthropic:claude-sonnet-4-6',
     maxTokens: (resolved.maxTokens as number) ?? 1024,
+    maxSteps: (resolved.maxSteps as number) ?? 5,
     tms: {
       url: (resolved.tms as { url?: string })?.url ?? 'http://localhost:4000',
     },

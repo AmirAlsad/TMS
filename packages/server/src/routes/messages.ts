@@ -25,11 +25,11 @@ export function createMessageRouter(config: TmsConfig, broadcast: BroadcastFn) {
     broadcast({ type: 'user:message', payload: userMessage });
 
     try {
-      const botResponse = await sendToBot(config, userMessage);
+      const botResult = await sendToBot(config, userMessage);
       const botMessage = {
         id: crypto.randomUUID(),
         role: 'bot' as const,
-        content: botResponse,
+        content: botResult.text,
         channel,
         timestamp: new Date().toISOString(),
       };

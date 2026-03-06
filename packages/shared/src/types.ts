@@ -20,6 +20,41 @@ export interface LogEntry {
   data?: Record<string, unknown>;
 }
 
+export interface TokenUsage {
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+}
+
+export interface TokenUsageSummary {
+  userBot: TokenUsage;
+  judge: TokenUsage;
+  botEndpoint: TokenUsage;
+  total: TokenUsage;
+  botMetrics?: BotEndpointSummary;
+}
+
+export interface BotEndpointMetrics {
+  cost?: number;
+  cachedTokens?: number;
+  uncachedTokens?: number;
+  latencyMs?: number;
+}
+
+export interface BotEndpointSummary {
+  totalCost?: number;
+  averageLatencyMs?: number;
+  totalCachedTokens?: number;
+  totalUncachedTokens?: number;
+}
+
+export interface TurnUsage {
+  turn: number;
+  userBot?: TokenUsage;
+  botEndpoint?: TokenUsage;
+  botMetrics?: BotEndpointMetrics;
+}
+
 export type Classification = 'passed' | 'needs_review' | 'failed';
 
 export interface EvalRequirement {
@@ -54,6 +89,7 @@ export interface EvalResult {
   startedAt: string;
   completedAt?: string;
   error?: string;
+  tokenUsage?: TokenUsageSummary;
 }
 
 export interface JudgeConfig {
@@ -84,6 +120,8 @@ export interface ConversationResult {
   turnCount: number;
   goalCompleted: boolean;
   error?: string;
+  turnUsages: TurnUsage[];
+  userBotTotal: TokenUsage;
 }
 
 export interface HookResult {

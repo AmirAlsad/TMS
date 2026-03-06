@@ -23,9 +23,14 @@ app.post('/chat', async (req, res) => {
   log('info', `Incoming message on [${ch}]`, { channel: ch, message });
 
   try {
-    const response = await chat(config, message, ch);
-    log('info', `Bot responded on [${ch}]`, { channel: ch, response });
-    res.json({ response });
+    const result = await chat(config, message, ch);
+    log('info', `Bot responded on [${ch}]`, { channel: ch, response: result.text });
+    res.json({
+      response: result.text,
+      usage: result.usage,
+      metrics: result.metrics,
+      ...(result.structuredData ? { structuredData: result.structuredData } : {}),
+    });
   } catch (err) {
     const errorMessage = err instanceof Error ? err.message : 'Unknown error';
     log('error', `LLM error on [${ch}]: ${errorMessage}`, { channel: ch, error: errorMessage });

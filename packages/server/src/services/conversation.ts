@@ -1,4 +1,4 @@
-import type { ConversationResult, EvalSpec, Message, TmsConfig } from '@tms/shared';
+import type { ConversationResult, EvalSpec, Message, TmsConfig, TokenUsage, TurnUsage } from '@tms/shared';
 import type { BroadcastFn } from '../ws/handler.js';
 import { sendToBot } from './bot-client.js';
 import { UserBot } from './user-bot.js';
@@ -27,6 +27,14 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function addToAccum(accum: TokenUsage, usage: TokenUsage): void {
+  accum.promptTokens += usage.promptTokens;
+  accum.completionTokens += usage.completionTokens;
+  accum.totalTokens += usage.totalTokens;
+}
+
+const ZERO_USAGE: TokenUsage = { promptTokens: 0, completionTokens: 0, totalTokens: 0 };
+
 export async function runConversation(
   config: TmsConfig,
   evalSpec: EvalSpec,
@@ -38,16 +46,21 @@ export async function runConversation(
 
   const userBot = new UserBot(config.userBot);
   const transcript: Message[] = [];
+  const turnUsages: TurnUsage[] = [];
+  const userBotTotal: TokenUsage = { ...ZERO_USAGE };
   let goalCompleted = false;
 
   try {
     for (let turn = 0; turn < evalSpec.turnLimit; turn++) {
       // Generate user bot message
       let userContent: string;
+      const turnUbUsage: TokenUsage = { ...ZERO_USAGE };
       let consecutiveWaits = 0;
 
       while (true) {
-        userContent = await userBot.generateReply(transcript, evalSpec);
+        const reply = await userBot.generateReply(transcript, evalSpec);
+        userContent = reply.text;
+        addToAccum(turnUbUsage, reply.usage);
 
         // Handle wait state
         if (userContent.trim() === WAIT_TOKEN && consecutiveWaits < MAX_CONSECUTIVE_WAITS) {
@@ -57,6 +70,8 @@ export async function runConversation(
         }
         break;
       }
+
+      addToAccum(userBotTotal, turnUbUsage);
 
       // Check for goal completion
       if (userContent.includes(GOAL_COMPLETE_TOKEN)) {
@@ -71,22 +86,34 @@ export async function runConversation(
         broadcast({ type: 'user:message', payload: userMessage });
       }
 
-      if (goalCompleted) break;
+      if (goalCompleted) {
+        turnUsages.push({ turn, userBot: turnUbUsage });
+        break;
+      }
 
       // Send to target bot and get response
       const lastUserMessage = transcript[transcript.length - 1];
       if (!lastUserMessage) break;
 
-      const botResponse = await sendToBot(config, lastUserMessage);
-      const botMessage = createMessage('bot', botResponse, evalSpec.channel);
+      const botResult = await sendToBot(config, lastUserMessage);
+      const botMessage = createMessage('bot', botResult.text, evalSpec.channel);
       transcript.push(botMessage);
       broadcast({ type: 'bot:message', payload: botMessage });
+
+      turnUsages.push({
+        turn,
+        userBot: turnUbUsage,
+        botEndpoint: botResult.usage,
+        botMetrics: botResult.metrics,
+      });
     }
 
     return {
       transcript,
       turnCount: Math.ceil(transcript.length / 2),
       goalCompleted,
+      turnUsages,
+      userBotTotal,
     };
   } catch (err) {
     const errorMsg = err instanceof Error ? err.message : 'Unknown error';
@@ -95,6 +122,8 @@ export async function runConversation(
       turnCount: Math.ceil(transcript.length / 2),
       goalCompleted: false,
       error: errorMsg,
+      turnUsages,
+      userBotTotal,
     };
   }
 }

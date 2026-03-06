@@ -1,5 +1,5 @@
 import { generateText } from 'ai';
-import type { Message, TmsConfig, EvalRequirement, Classification } from '@tms/shared';
+import type { Message, TmsConfig, EvalRequirement, Classification, TokenUsage } from '@tms/shared';
 import { resolveModel } from './ai-registry.js';
 
 export interface JudgeInput {
@@ -11,6 +11,7 @@ export interface JudgeInput {
 export interface JudgeOutput {
   requirements: EvalRequirement[];
   classification: Classification;
+  usage: TokenUsage;
 }
 
 const CLASSIFICATION_RANK: Record<Classification, number> = {
@@ -69,7 +70,7 @@ interface JudgeResponse {
   requirements: JudgeResponseRequirement[];
 }
 
-function parseJudgeResponse(text: string, input: JudgeInput): JudgeOutput {
+function parseJudgeResponse(text: string, input: JudgeInput): Omit<JudgeOutput, 'usage'> {
   const jsonMatch = text.match(/\{[\s\S]*\}/);
   if (!jsonMatch) {
     throw new Error('Judge response did not contain valid JSON');
@@ -116,12 +117,19 @@ export async function evaluateTranscript(
     throw new Error('Judge config is required for evaluation');
   }
 
-  const { text } = await generateText({
+  const { text, usage } = await generateText({
     model: resolveModel(config.judge.model),
     system: prompt.system,
     messages: [{ role: 'user', content: prompt.user }],
     maxOutputTokens: 4096,
   });
 
-  return parseJudgeResponse(text, input);
+  return {
+    ...parseJudgeResponse(text, input),
+    usage: {
+      promptTokens: usage.inputTokens ?? 0,
+      completionTokens: usage.outputTokens ?? 0,
+      totalTokens: usage.totalTokens ?? (usage.inputTokens ?? 0) + (usage.outputTokens ?? 0),
+    },
+  };
 }

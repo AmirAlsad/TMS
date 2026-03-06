@@ -4,8 +4,6 @@ Here's a list of all the changes and features that need to be implemented to the
 
 - Clear documentation for the different components. Find out how other platforms take care of it. Look at Pipecat as an example.
 
-- Add logging of token usage and cost.
-
 - Make sure the LLM-as-a-Judge is able to see tool calls.
 
 - Give tooling and any other special capabilities to the example bot endpoint.

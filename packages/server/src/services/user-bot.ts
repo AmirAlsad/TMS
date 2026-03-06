@@ -1,5 +1,5 @@
 import { generateText } from 'ai';
-import type { EvalSpec, Message, TmsConfig } from '@tms/shared';
+import type { EvalSpec, Message, TmsConfig, TokenUsage } from '@tms/shared';
 import { resolveModel } from './ai-registry.js';
 
 type UserBotConfig = NonNullable<TmsConfig['userBot']>;
@@ -44,7 +44,10 @@ export class UserBot {
     this.config = config;
   }
 
-  async generateReply(transcript: Message[], evalSpec: EvalSpec): Promise<string> {
+  async generateReply(
+    transcript: Message[],
+    evalSpec: EvalSpec,
+  ): Promise<{ text: string; usage: TokenUsage }> {
     const systemPrompt = buildSystemPrompt(evalSpec, this.config.systemPrompt);
     const messages = flipRoles(transcript);
 
@@ -52,13 +55,20 @@ export class UserBot {
       messages.push({ role: 'user', content: START_PROMPT });
     }
 
-    const { text } = await generateText({
+    const { text, usage } = await generateText({
       model: resolveModel(this.config.model),
       system: systemPrompt,
       messages,
       maxOutputTokens: 1024,
     });
 
-    return text;
+    return {
+      text,
+      usage: {
+        promptTokens: usage.inputTokens ?? 0,
+        completionTokens: usage.outputTokens ?? 0,
+        totalTokens: usage.totalTokens ?? (usage.inputTokens ?? 0) + (usage.outputTokens ?? 0),
+      },
+    };
   }
 }

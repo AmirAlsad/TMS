@@ -1,6 +1,12 @@
 import { useEffect, useState } from 'react';
 import { useStore } from '../stores/store';
-import type { EvalResult, Classification } from '@tms/shared';
+import type {
+  EvalResult,
+  Classification,
+  TokenUsageSummary,
+  TokenUsage,
+  BotEndpointSummary,
+} from '@tms/shared';
 
 const classificationColors: Record<Classification, string> = {
   passed: 'text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/30',
@@ -88,6 +94,16 @@ function ResultCard({
           <span className="text-[11px] text-slate-400 dark:text-slate-500">
             {result.transcript.length} message{result.transcript.length !== 1 ? 's' : ''}
           </span>
+          {result.tokenUsage && (
+            <span className="text-[11px] text-slate-400 dark:text-slate-500">
+              {result.tokenUsage.total.totalTokens.toLocaleString()} tokens
+            </span>
+          )}
+          {result.tokenUsage?.botMetrics?.totalCost != null && (
+            <span className="text-[11px] text-slate-400 dark:text-slate-500">
+              ${result.tokenUsage.botMetrics.totalCost.toFixed(4)}
+            </span>
+          )}
         </div>
       </button>
 
@@ -119,8 +135,97 @@ function ResultCard({
               </div>
             </div>
           ))}
+          {result.tokenUsage && <TokenUsageTable usage={result.tokenUsage} />}
+          {result.tokenUsage?.botMetrics && (
+            <BotMetricsSection metrics={result.tokenUsage.botMetrics} />
+          )}
         </div>
       )}
+    </div>
+  );
+}
+
+function formatTokenCount(value: number): string {
+  return value.toLocaleString();
+}
+
+function BotMetricsSection({ metrics }: { metrics: BotEndpointSummary }) {
+  const items: Array<{ label: string; value: string }> = [];
+
+  if (metrics.totalCost != null) {
+    items.push({ label: 'Cost', value: `$${metrics.totalCost.toFixed(4)}` });
+  }
+  if (metrics.averageLatencyMs != null) {
+    items.push({ label: 'Avg Latency', value: `${metrics.averageLatencyMs.toLocaleString()}ms` });
+  }
+  if (metrics.totalCachedTokens != null || metrics.totalUncachedTokens != null) {
+    const cached = metrics.totalCachedTokens ?? 0;
+    const uncached = metrics.totalUncachedTokens ?? 0;
+    items.push({
+      label: 'Prompt Tokens',
+      value: `${cached.toLocaleString()} cached / ${uncached.toLocaleString()} uncached`,
+    });
+  }
+
+  if (items.length === 0) return null;
+
+  return (
+    <div className="mt-3 pt-3 border-t border-slate-200/60 dark:border-slate-700/40">
+      <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500 mb-2">
+        Bot Endpoint Metrics
+      </p>
+      <div className="space-y-1">
+        {items.map(({ label, value }) => (
+          <div key={label} className="flex justify-between text-[11px]">
+            <span className="text-slate-500 dark:text-slate-400">{label}</span>
+            <span className="text-slate-700 dark:text-slate-300 font-medium">{value}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function TokenUsageTable({ usage }: { usage: TokenUsageSummary }) {
+  const rows: Array<{ label: string; value: TokenUsage; bold?: boolean }> = [
+    { label: 'User Bot', value: usage.userBot },
+    { label: 'Judge', value: usage.judge },
+    { label: 'Bot Endpoint', value: usage.botEndpoint },
+    { label: 'Total', value: usage.total, bold: true },
+  ];
+
+  return (
+    <div className="mt-3 pt-3 border-t border-slate-200/60 dark:border-slate-700/40">
+      <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500 mb-2">
+        Token Usage
+      </p>
+      <table className="w-full text-[11px]">
+        <thead>
+          <tr className="text-slate-400 dark:text-slate-500">
+            <th className="text-left font-medium pb-1">Source</th>
+            <th className="text-right font-medium pb-1">Prompt</th>
+            <th className="text-right font-medium pb-1">Completion</th>
+            <th className="text-right font-medium pb-1">Total</th>
+          </tr>
+        </thead>
+        <tbody className="text-slate-600 dark:text-slate-400">
+          {rows.map(({ label, value, bold }) => (
+            <tr
+              key={label}
+              className={
+                bold
+                  ? 'font-semibold border-t border-slate-200/60 dark:border-slate-700/40'
+                  : ''
+              }
+            >
+              <td className="py-0.5">{label}</td>
+              <td className="text-right py-0.5">{formatTokenCount(value.promptTokens)}</td>
+              <td className="text-right py-0.5">{formatTokenCount(value.completionTokens)}</td>
+              <td className="text-right py-0.5">{formatTokenCount(value.totalTokens)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }

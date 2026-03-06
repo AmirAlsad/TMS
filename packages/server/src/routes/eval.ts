@@ -1,6 +1,14 @@
 import { Router } from 'express';
 import { parse as parseYaml } from 'yaml';
-import type { TmsConfig, EvalResult, EvalSpec } from '@tms/shared';
+import type {
+  TmsConfig,
+  EvalResult,
+  EvalSpec,
+  TokenUsage,
+  TokenUsageSummary,
+  ConversationResult,
+  BotEndpointSummary,
+} from '@tms/shared';
 import { evalSpecSchema } from '@tms/shared';
 import type { BroadcastFn } from '../ws/handler.js';
 import { runConversation } from '../services/conversation.js';
@@ -8,6 +16,67 @@ import { runHook } from '../services/hooks.js';
 import { evaluateTranscript } from '../services/evaluator.js';
 import { saveEvalResult, getEvalResult, listEvalResults, generateEvalId } from '../services/eval-results.js';
 import { loadEvalSpec, listEvalSpecs } from '../services/eval-spec-loader.js';
+
+const ZERO_USAGE: TokenUsage = { promptTokens: 0, completionTokens: 0, totalTokens: 0 };
+
+function buildTokenUsageSummary(
+  conversationResult: ConversationResult,
+  judgeUsage?: TokenUsage,
+): TokenUsageSummary {
+  const botEndpointTotal: TokenUsage = { ...ZERO_USAGE };
+  for (const t of conversationResult.turnUsages) {
+    if (t.botEndpoint) {
+      botEndpointTotal.promptTokens += t.botEndpoint.promptTokens;
+      botEndpointTotal.completionTokens += t.botEndpoint.completionTokens;
+      botEndpointTotal.totalTokens += t.botEndpoint.totalTokens;
+    }
+  }
+
+  const ub = conversationResult.userBotTotal;
+  const ju = judgeUsage ?? ZERO_USAGE;
+  const be = botEndpointTotal;
+
+  // Aggregate bot endpoint metrics (cost, cached tokens, latency)
+  let botMetrics: BotEndpointSummary | undefined;
+  let totalCost = 0;
+  let totalCached = 0;
+  let totalUncached = 0;
+  let latencySum = 0;
+  let latencyCount = 0;
+  let hasAnyMetrics = false;
+
+  for (const t of conversationResult.turnUsages) {
+    if (!t.botMetrics) continue;
+    hasAnyMetrics = true;
+    if (t.botMetrics.cost != null) totalCost += t.botMetrics.cost;
+    if (t.botMetrics.cachedTokens != null) totalCached += t.botMetrics.cachedTokens;
+    if (t.botMetrics.uncachedTokens != null) totalUncached += t.botMetrics.uncachedTokens;
+    if (t.botMetrics.latencyMs != null) {
+      latencySum += t.botMetrics.latencyMs;
+      latencyCount++;
+    }
+  }
+
+  if (hasAnyMetrics) {
+    botMetrics = {};
+    if (totalCost > 0) botMetrics.totalCost = totalCost;
+    if (totalCached > 0) botMetrics.totalCachedTokens = totalCached;
+    if (totalUncached > 0) botMetrics.totalUncachedTokens = totalUncached;
+    if (latencyCount > 0) botMetrics.averageLatencyMs = Math.round(latencySum / latencyCount);
+  }
+
+  return {
+    userBot: ub,
+    judge: ju,
+    botEndpoint: be,
+    total: {
+      promptTokens: ub.promptTokens + ju.promptTokens + be.promptTokens,
+      completionTokens: ub.completionTokens + ju.completionTokens + be.completionTokens,
+      totalTokens: ub.totalTokens + ju.totalTokens + be.totalTokens,
+    },
+    botMetrics,
+  };
+}
 
 function parseSpec(body: Record<string, unknown>): EvalSpec {
   let rawSpec: unknown;
@@ -54,6 +123,7 @@ async function executeEval(
       result.status = 'failed';
       result.error = conversationResult.error;
       result.completedAt = new Date().toISOString();
+      result.tokenUsage = buildTokenUsageSummary(conversationResult);
       await saveEvalResult(result);
       broadcast({ type: 'eval:result', payload: result });
       return;
@@ -73,6 +143,8 @@ async function executeEval(
     result.classification = judgeOutput.classification;
     result.status = 'completed';
     result.completedAt = new Date().toISOString();
+
+    result.tokenUsage = buildTokenUsageSummary(conversationResult, judgeOutput.usage);
   } catch (err) {
     result.status = 'failed';
     result.error = err instanceof Error ? err.message : 'Unknown error';

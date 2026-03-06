@@ -18,6 +18,34 @@ export const logEntrySchema = z.object({
   data: z.record(z.unknown()).optional(),
 });
 
+export const tokenUsageSchema = z.object({
+  promptTokens: z.number().int().nonnegative(),
+  completionTokens: z.number().int().nonnegative(),
+  totalTokens: z.number().int().nonnegative(),
+});
+
+export const botEndpointMetricsSchema = z.object({
+  cost: z.number().nonnegative().optional(),
+  cachedTokens: z.number().int().nonnegative().optional(),
+  uncachedTokens: z.number().int().nonnegative().optional(),
+  latencyMs: z.number().nonnegative().optional(),
+});
+
+export const botEndpointSummarySchema = z.object({
+  totalCost: z.number().nonnegative().optional(),
+  averageLatencyMs: z.number().nonnegative().optional(),
+  totalCachedTokens: z.number().int().nonnegative().optional(),
+  totalUncachedTokens: z.number().int().nonnegative().optional(),
+});
+
+export const tokenUsageSummarySchema = z.object({
+  userBot: tokenUsageSchema,
+  judge: tokenUsageSchema,
+  botEndpoint: tokenUsageSchema,
+  total: tokenUsageSchema,
+  botMetrics: botEndpointSummarySchema.optional(),
+});
+
 export const evalSpecSchema = z.object({
   name: z.string(),
   description: z.string(),
@@ -56,6 +84,7 @@ export const evalResultSchema = z.object({
   startedAt: z.string(),
   completedAt: z.string().optional(),
   error: z.string().optional(),
+  tokenUsage: tokenUsageSummarySchema.optional(),
 });
 
 export const tmsConfigSchema = z.object({
