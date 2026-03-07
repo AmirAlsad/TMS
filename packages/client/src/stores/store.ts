@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { Message, LogEntry, Channel, EvalResult } from '@tms/shared';
+import type { Message, LogEntry, Channel, EvalResult, ReadStatus } from '@tms/shared';
 
 export type AppMode = 'playground' | 'automated';
 export type Theme = 'light' | 'dark';
@@ -32,6 +32,12 @@ interface TmsStore {
   currentEval: EvalStatus | null;
   evalResults: EvalResult[];
 
+  // WhatsApp state
+  messageReadStates: Record<string, ReadStatus>;
+  messageReactions: Record<string, { emoji: string; fromUser: boolean }[]>;
+  replyingTo: Message | null;
+  typingIndicator: { active: boolean; role: 'user' | 'bot' } | null;
+
   addMessage: (message: Message) => void;
   addLog: (log: LogEntry) => void;
   setChannel: (channel: Channel) => void;
@@ -49,6 +55,13 @@ interface TmsStore {
   setEvalResult: (result: EvalResult) => void;
   setEvalResults: (results: EvalResult[]) => void;
   clearEval: () => void;
+
+  // WhatsApp actions
+  setReadState: (messageId: string, status: ReadStatus) => void;
+  addReaction: (messageId: string, emoji: string, fromUser: boolean) => void;
+  removeReaction: (messageId: string, emoji: string, fromUser: boolean) => void;
+  setReplyingTo: (message: Message | null) => void;
+  setTypingIndicator: (indicator: { active: boolean; role: 'user' | 'bot' } | null) => void;
 }
 
 export const useStore = create<TmsStore>((set, get) => ({
@@ -64,12 +77,19 @@ export const useStore = create<TmsStore>((set, get) => ({
   currentEval: null,
   evalResults: [],
 
+  // WhatsApp state
+  messageReadStates: {},
+  messageReactions: {},
+  replyingTo: null,
+  typingIndicator: null,
+
   addMessage: (message) => set((s) => ({ messages: [...s.messages, message] })),
   addLog: (log) => set((s) => ({ logs: [...s.logs, log] })),
   setChannel: (channel) => set({ channel }),
   setBotEndpoint: (endpoint) => set({ botEndpoint: endpoint }),
   toggleConfig: () => set((s) => ({ showConfig: !s.showConfig })),
-  clearMessages: () => set({ messages: [] }),
+  clearMessages: () =>
+    set({ messages: [], messageReadStates: {}, messageReactions: {}, replyingTo: null, typingIndicator: null }),
   clearLogs: () => set({ logs: [] }),
   setTheme: (theme) => {
     localStorage.setItem('tms-theme', theme);
@@ -99,4 +119,40 @@ export const useStore = create<TmsStore>((set, get) => ({
     })),
   setEvalResults: (results) => set({ evalResults: results }),
   clearEval: () => set({ currentEval: null }),
+
+  // WhatsApp actions
+  setReadState: (messageId, status) =>
+    set((s) => {
+      const rank = { sent: 0, delivered: 1, read: 2 };
+      const current = s.messageReadStates[messageId];
+      if (current && rank[current] >= rank[status]) return s;
+      return { messageReadStates: { ...s.messageReadStates, [messageId]: status } };
+    }),
+  addReaction: (messageId, emoji, fromUser) =>
+    set((s) => {
+      const existing = s.messageReactions[messageId] ?? [];
+      return {
+        messageReactions: {
+          ...s.messageReactions,
+          [messageId]: [...existing, { emoji, fromUser }],
+        },
+      };
+    }),
+  removeReaction: (messageId, emoji, fromUser) =>
+    set((s) => {
+      const existing = s.messageReactions[messageId] ?? [];
+      let removed = false;
+      const filtered = existing.filter((r) => {
+        if (!removed && r.emoji === emoji && r.fromUser === fromUser) {
+          removed = true;
+          return false;
+        }
+        return true;
+      });
+      return {
+        messageReactions: { ...s.messageReactions, [messageId]: filtered },
+      };
+    }),
+  setReplyingTo: (message) => set({ replyingTo: message }),
+  setTypingIndicator: (indicator) => set({ typingIndicator: indicator }),
 }));

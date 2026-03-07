@@ -1,0 +1,33 @@
+name: whatsapp-multi-option
+description: >
+  Test that the user bot correctly uses quoted replies to select a specific
+  option when the bot presents multiple choices. Verifies quoted reply
+  functionality in the conversation loop.
+channel: whatsapp
+
+userBot:
+  goal: >
+    You want to book an appointment but you're not sure which service.
+    Ask what's available. When the bot lists multiple services,
+    use a quoted reply to select the one you want (pick the second option).
+    Your name is James Wilson.
+  persona: >
+    You're a bit indecisive at first but make clear choices when
+    presented with options. You like to reference specific messages
+    when responding to keep things clear.
+
+requirements:
+  - The bot should list available services when asked
+  - The bot should understand the user's selection even via quoted reply
+  - The bot should proceed with booking the selected service
+  - The bot should confirm the final appointment details
+
+turnLimit: 14
+
+whatsapp:
+  readReceipts:
+    mode: on_response
+  userBot:
+    allowReactions: true
+    allowQuotedReplies: true
+    allowVoiceNotes: false

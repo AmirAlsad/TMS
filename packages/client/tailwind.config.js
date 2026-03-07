@@ -12,6 +12,7 @@ export default {
         'fade-in': 'fadeIn 0.4s ease-out',
         'slide-up': 'slideUp 0.3s ease-out',
         'slide-down': 'slideDown 0.25s ease-out',
+        'typing-bounce': 'typingBounce 1.4s ease-in-out infinite',
       },
       keyframes: {
         fadeIn: {

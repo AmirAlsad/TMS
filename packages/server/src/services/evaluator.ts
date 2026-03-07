@@ -1,5 +1,5 @@
 import { generateText } from 'ai';
-import type { Message, TmsConfig, EvalRequirement, Classification, TokenUsage } from '@tms/shared';
+import type { Message, TmsConfig, EvalRequirement, Classification, TokenUsage, WhatsAppEvent } from '@tms/shared';
 import { resolveModel } from './ai-registry.js';
 
 export interface JudgeInput {
@@ -7,6 +7,7 @@ export interface JudgeInput {
   requirements: string[];
   specName: string;
   specDescription?: string;
+  events?: WhatsAppEvent[];
 }
 
 export interface JudgeOutput {
@@ -24,20 +25,50 @@ const CLASSIFICATION_RANK: Record<Classification, number> = {
 const RANK_TO_CLASSIFICATION: Classification[] = ['passed', 'needs_review', 'failed'];
 
 function buildPrompt(input: JudgeInput): { system: string; user: string } {
-  const transcriptText = input.transcript
-    .map((m) => {
-      let line = `[${m.role.toUpperCase()}]: ${m.content}`;
-      if (m.toolCalls?.length) {
-        const calls = m.toolCalls.map((tc) => `  - ${tc.toolName}(${JSON.stringify(tc.input)})`).join('\n');
-        line += `\n[TOOL CALLS]:\n${calls}`;
+  // Build chronological entries from messages and events
+  type TranscriptEntry = { timestamp: string; text: string };
+  const entries: TranscriptEntry[] = [];
+
+  for (const m of input.transcript) {
+    let line = `[${m.role.toUpperCase()}]: ${m.content}`;
+    if (m.quotedReply) {
+      line = `[${m.role.toUpperCase()} quoted ${m.quotedReply.targetMessageId}]: ${m.content}`;
+    }
+    if (m.mediaType) {
+      line = `[${m.role.toUpperCase()} ${m.mediaType}]: ${m.content || '(media)'}`;
+    }
+    if (m.toolCalls?.length) {
+      const calls = m.toolCalls.map((tc) => `  - ${tc.toolName}(${JSON.stringify(tc.input)})`).join('\n');
+      line += `\n[TOOL CALLS]:\n${calls}`;
+    }
+    if (m.toolResults?.length) {
+      const results = m.toolResults.map((tr) => `  - ${tr.toolName} → ${JSON.stringify(tr.result)}`).join('\n');
+      line += `\n[TOOL RESULTS]:\n${results}`;
+    }
+    entries.push({ timestamp: m.timestamp, text: line });
+  }
+
+  // Interleave WhatsApp events
+  if (input.events) {
+    for (const event of input.events) {
+      if (event.type === 'reaction' || event.type === 'reaction_removed') {
+        const who = event.fromUser ? 'USER' : 'BOT';
+        const action = event.type === 'reaction' ? `reacted ${event.emoji} to` : 'removed reaction from';
+        entries.push({
+          timestamp: event.timestamp,
+          text: `[${who} ${action} message ${event.targetMessageId}]`,
+        });
+      } else if (event.type === 'read_receipt') {
+        entries.push({
+          timestamp: event.readAt,
+          text: `[READ RECEIPT: message ${event.messageId} read at ${event.readAt}]`,
+        });
       }
-      if (m.toolResults?.length) {
-        const results = m.toolResults.map((tr) => `  - ${tr.toolName} → ${JSON.stringify(tr.result)}`).join('\n');
-        line += `\n[TOOL RESULTS]:\n${results}`;
-      }
-      return line;
-    })
-    .join('\n');
+    }
+  }
+
+  entries.sort((a, b) => a.timestamp.localeCompare(b.timestamp));
+  const transcriptText = entries.map((e) => e.text).join('\n');
 
   const requirementsList = input.requirements
     .map((r, i) => `${i + 1}. ${r}`)
@@ -55,6 +86,8 @@ When evaluating, consider:
 - The overall conversational quality, including tone, helpfulness, and logical flow.
 
 The transcript may include [TOOL CALLS] and [TOOL RESULTS] sections showing the bot's tool usage. Use these to verify the bot's behavior against the requirements.
+
+The transcript may also include WhatsApp-specific events such as reactions, quoted replies, and read receipts. Consider these when evaluating conversational quality and responsiveness.
 
 Respond with ONLY valid JSON in this exact format:
 {

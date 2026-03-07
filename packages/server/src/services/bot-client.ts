@@ -1,4 +1,12 @@
-import type { Message, TmsConfig, TokenUsage, BotEndpointMetrics, ToolCallInfo, ToolResultInfo } from '@tms/shared';
+import type {
+  Message,
+  TmsConfig,
+  TokenUsage,
+  BotEndpointMetrics,
+  ToolCallInfo,
+  ToolResultInfo,
+  WhatsAppReaction,
+} from '@tms/shared';
 
 export interface BotResponse {
   text: string;
@@ -45,8 +53,35 @@ function extractMetrics(data: unknown): BotEndpointMetrics | undefined {
   return Object.keys(metrics).length > 0 ? metrics : undefined;
 }
 
-export async function sendToBot(config: TmsConfig, message: Message): Promise<BotResponse> {
+export function getCallbackBaseUrl(config: TmsConfig): string {
+  const port = config.server?.port ?? 4000;
+  return `http://localhost:${port}`;
+}
+
+export async function sendToBot(
+  config: TmsConfig,
+  message: Message,
+  callbackUrl?: string,
+): Promise<BotResponse> {
   const { endpoint, method = 'POST', headers = {} } = config.bot;
+
+  const body: Record<string, unknown> = {
+    message: message.content,
+    channel: message.channel,
+  };
+
+  if (message.quotedReply) {
+    body.quotedReply = message.quotedReply;
+  }
+
+  if (message.mediaType) {
+    body.mediaType = message.mediaType;
+    body.mediaUrl = message.mediaUrl;
+  }
+
+  if (callbackUrl) {
+    body.callbackUrl = callbackUrl;
+  }
 
   const response = await fetch(endpoint, {
     method,
@@ -54,10 +89,7 @@ export async function sendToBot(config: TmsConfig, message: Message): Promise<Bo
       'Content-Type': 'application/json',
       ...headers,
     },
-    body: JSON.stringify({
-      message: message.content,
-      channel: message.channel,
-    }),
+    body: JSON.stringify(body),
   });
 
   if (!response.ok) {
@@ -83,7 +115,73 @@ export async function sendToBot(config: TmsConfig, message: Message): Promise<Bo
   }
 
   const toolCalls = Array.isArray(data.toolCalls) ? (data.toolCalls as ToolCallInfo[]) : undefined;
-  const toolResults = Array.isArray(data.toolResults) ? (data.toolResults as ToolResultInfo[]) : undefined;
+  const toolResults = Array.isArray(data.toolResults)
+    ? (data.toolResults as ToolResultInfo[])
+    : undefined;
 
-  return { text, usage: extractUsage(data), metrics: extractMetrics(data), toolCalls, toolResults };
+  return {
+    text,
+    usage: extractUsage(data),
+    metrics: extractMetrics(data),
+    toolCalls,
+    toolResults,
+  };
+}
+
+/**
+ * Fire a status callback to the bot endpoint, mimicking Twilio's StatusCallback webhook.
+ * This notifies the bot that a message it sent has been read (or delivered).
+ * The bot endpoint can ignore this if it doesn't care about message status.
+ */
+export async function sendStatusCallback(
+  config: TmsConfig,
+  messageId: string,
+  status: 'delivered' | 'read',
+): Promise<void> {
+  const { endpoint, headers = {} } = config.bot;
+
+  try {
+    await fetch(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...headers },
+      body: JSON.stringify({
+        type: 'status_callback',
+        channel: 'whatsapp',
+        messageId,
+        messageStatus: status,
+        timestamp: new Date().toISOString(),
+      }),
+    });
+  } catch {
+    // Status callbacks are fire-and-forget; don't break the flow if the endpoint rejects them
+  }
+}
+
+/**
+ * Fire a reaction callback to the bot endpoint, mimicking Twilio's inbound webhook
+ * for WhatsApp reactions. Each reaction triggers its own immediate POST.
+ */
+export async function sendReactionCallback(
+  config: TmsConfig,
+  reaction: WhatsAppReaction,
+): Promise<void> {
+  const { endpoint, headers = {} } = config.bot;
+
+  try {
+    await fetch(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...headers },
+      body: JSON.stringify({
+        type: 'reaction_callback',
+        channel: 'whatsapp',
+        targetMessageId: reaction.targetMessageId,
+        emoji: reaction.emoji,
+        reactionType: reaction.type,
+        fromUser: reaction.fromUser,
+        timestamp: reaction.timestamp,
+      }),
+    });
+  } catch {
+    // Reaction callbacks are fire-and-forget
+  }
 }

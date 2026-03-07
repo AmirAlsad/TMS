@@ -2,12 +2,31 @@ import { z } from 'zod';
 
 export const channelSchema = z.enum(['sms', 'whatsapp']);
 
+export const readStatusSchema = z.enum(['sent', 'delivered', 'read']);
+
+export const messageReadStatusSchema = z.object({
+  status: readStatusSchema,
+  sentAt: z.string().optional(),
+  deliveredAt: z.string().optional(),
+  readAt: z.string().optional(),
+});
+
+export const quotedReplySchema = z.object({
+  targetMessageId: z.string(),
+  quotedBody: z.string(),
+});
+
 export const messageSchema = z.object({
   id: z.string(),
   role: z.enum(['user', 'bot']),
   content: z.string(),
   channel: channelSchema,
   timestamp: z.string(),
+  quotedReply: quotedReplySchema.optional(),
+  mediaType: z.string().optional(),
+  mediaUrl: z.string().optional(),
+  transcription: z.string().nullable().optional(),
+  readStatus: messageReadStatusSchema.optional(),
 });
 
 export const logEntrySchema = z.object({
@@ -46,6 +65,75 @@ export const tokenUsageSummarySchema = z.object({
   botMetrics: botEndpointSummarySchema.optional(),
 });
 
+export const readReceiptModeSchema = z.enum(['auto_delay', 'manual', 'on_response']);
+
+export const whatsAppEvalConfigSchema = z.object({
+  readReceipts: z
+    .object({
+      mode: readReceiptModeSchema,
+      autoDelayMs: z.number().int().nonnegative().optional(),
+    })
+    .optional(),
+  userBot: z
+    .object({
+      allowReactions: z.boolean().optional(),
+      allowQuotedReplies: z.boolean().optional(),
+      allowVoiceNotes: z.boolean().optional(),
+      voiceNoteAssets: z.array(z.string()).optional(),
+    })
+    .optional(),
+});
+
+export const whatsAppReactionSchema = z.object({
+  type: z.enum(['reaction', 'reaction_removed']),
+  fromUser: z.boolean(),
+  targetMessageId: z.string(),
+  emoji: z.string(),
+  timestamp: z.string(),
+});
+
+export const whatsAppReadReceiptSchema = z.object({
+  type: z.literal('read_receipt'),
+  messageId: z.string(),
+  readAt: z.string(),
+});
+
+export const whatsAppTypingEventSchema = z.object({
+  type: z.enum(['typing_start', 'typing_stop']),
+  fromUser: z.boolean(),
+  timestamp: z.string(),
+});
+
+export const userBotActionSchema = z.discriminatedUnion('type', [
+  z.object({
+    type: z.literal('send_message'),
+    body: z.string(),
+    goalComplete: z.boolean().optional(),
+  }),
+  z.object({
+    type: z.literal('react_to_message'),
+    targetMessageId: z.string(),
+    emoji: z.string(),
+  }),
+  z.object({
+    type: z.literal('remove_reaction'),
+    targetMessageId: z.string(),
+  }),
+  z.object({
+    type: z.literal('reply_to_message'),
+    targetMessageId: z.string(),
+    body: z.string(),
+    goalComplete: z.boolean().optional(),
+  }),
+  z.object({
+    type: z.literal('send_voice_note'),
+    audioRef: z.string(),
+  }),
+  z.object({
+    type: z.literal('wait'),
+  }),
+]);
+
 export const evalSpecSchema = z.object({
   name: z.string(),
   description: z.string(),
@@ -62,6 +150,7 @@ export const evalSpecSchema = z.object({
       after: z.string().optional(),
     })
     .optional(),
+  whatsapp: whatsAppEvalConfigSchema.optional(),
 });
 
 export const judgeConfigSchema = z.object({
@@ -110,4 +199,5 @@ export const tmsConfigSchema = z.object({
       port: z.number().int().default(4000),
     })
     .optional(),
+  whatsapp: whatsAppEvalConfigSchema.optional(),
 });

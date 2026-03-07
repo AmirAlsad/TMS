@@ -1,0 +1,32 @@
+name: whatsapp-reactions-only
+description: >
+  Test that the user bot respects eval spec constraints. Reactions are enabled
+  but quoted replies are disabled. The user bot should only use send_message
+  and react_to_message, never reply_to_message.
+channel: whatsapp
+
+userBot:
+  goal: >
+    You want to check the status of your existing appointment.
+    Your name is Sarah Chen and your appointment ID is apt-5.
+    React to the bot's responses when appropriate.
+  persona: >
+    You're casual and use reactions frequently to show you've read
+    messages. You like to give a thumbs up when things are going well.
+
+requirements:
+  - The bot should look up the appointment by ID
+  - The bot should display accurate appointment details
+  - The conversation should complete without errors
+  - The user bot should not use quoted replies (they are disabled)
+
+turnLimit: 8
+
+whatsapp:
+  readReceipts:
+    mode: auto_delay
+    autoDelayMs: 1500
+  userBot:
+    allowReactions: true
+    allowQuotedReplies: false
+    allowVoiceNotes: false

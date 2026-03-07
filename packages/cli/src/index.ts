@@ -1,6 +1,6 @@
 import dotenv from 'dotenv';
 import { Command } from 'commander';
-import { findProjectRoot } from '@tms/server/services/project-root';
+import { findProjectRoot } from '@tms/server/services';
 import { registerStartCommand } from './commands/start.js';
 import { registerRunCommand } from './commands/run.js';
 

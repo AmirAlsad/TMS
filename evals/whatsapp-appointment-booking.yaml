@@ -1,0 +1,31 @@
+name: whatsapp-appointment-booking
+description: >
+  Test booking flow on WhatsApp with reactions and quoted replies enabled.
+  The user bot may react to confirmations and use quoted replies naturally.
+channel: whatsapp
+
+userBot:
+  goal: >
+    You want to book a haircut appointment for next Wednesday afternoon.
+    Your name is Maria Garcia. When the bot confirms the booking,
+    react with a thumbs up before thanking them.
+  persona: >
+    You're friendly and expressive. You use emoji reactions naturally
+    to acknowledge messages. You're decisive and know what you want.
+
+requirements:
+  - The bot should greet the user and ask what service they need
+  - The bot should check availability before booking
+  - The bot should confirm the appointment details with the user before finalizing
+  - The bot should provide a confirmation with an appointment ID after booking
+  - The conversation should feel natural for a WhatsApp interaction
+
+turnLimit: 12
+
+whatsapp:
+  readReceipts:
+    mode: on_response
+  userBot:
+    allowReactions: true
+    allowQuotedReplies: true
+    allowVoiceNotes: false

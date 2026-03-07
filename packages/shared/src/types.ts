@@ -12,6 +12,20 @@ export interface ToolResultInfo {
   result: unknown;
 }
 
+export type ReadStatus = 'sent' | 'delivered' | 'read';
+
+export interface MessageReadStatus {
+  status: ReadStatus;
+  sentAt?: string;
+  deliveredAt?: string;
+  readAt?: string;
+}
+
+export interface QuotedReply {
+  targetMessageId: string;
+  quotedBody: string;
+}
+
 export interface Message {
   id: string;
   role: MessageRole;
@@ -20,6 +34,12 @@ export interface Message {
   timestamp: string;
   toolCalls?: ToolCallInfo[];
   toolResults?: ToolResultInfo[];
+  // WhatsApp-specific fields
+  quotedReply?: QuotedReply;
+  mediaType?: string;
+  mediaUrl?: string;
+  transcription?: string | null;
+  readStatus?: MessageReadStatus;
 }
 
 export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
@@ -75,6 +95,21 @@ export interface EvalRequirement {
   reasoning?: string;
 }
 
+export type ReadReceiptMode = 'auto_delay' | 'manual' | 'on_response';
+
+export interface WhatsAppEvalConfig {
+  readReceipts?: {
+    mode: ReadReceiptMode;
+    autoDelayMs?: number;
+  };
+  userBot?: {
+    allowReactions?: boolean;
+    allowQuotedReplies?: boolean;
+    allowVoiceNotes?: boolean;
+    voiceNoteAssets?: string[];
+  };
+}
+
 export interface EvalSpec {
   name: string;
   description: string;
@@ -89,6 +124,7 @@ export interface EvalSpec {
     before?: string;
     after?: string;
   };
+  whatsapp?: WhatsAppEvalConfig;
 }
 
 export interface EvalResult {
@@ -125,6 +161,7 @@ export interface TmsConfig {
   server?: {
     port: number;
   };
+  whatsapp?: WhatsAppEvalConfig;
 }
 
 export interface ConversationResult {
@@ -134,12 +171,45 @@ export interface ConversationResult {
   error?: string;
   turnUsages: TurnUsage[];
   userBotTotal: TokenUsage;
+  events?: WhatsAppEvent[];
 }
 
 export interface HookResult {
   stdout: string;
   stderr: string;
 }
+
+// WhatsApp event types
+export interface WhatsAppReaction {
+  type: 'reaction' | 'reaction_removed';
+  fromUser: boolean;
+  targetMessageId: string;
+  emoji: string;
+  timestamp: string;
+}
+
+export interface WhatsAppReadReceipt {
+  type: 'read_receipt';
+  messageId: string;
+  readAt: string;
+}
+
+export interface WhatsAppTypingEvent {
+  type: 'typing_start' | 'typing_stop';
+  fromUser: boolean;
+  timestamp: string;
+}
+
+export type UserBotAction =
+  | { type: 'send_message'; body: string; goalComplete?: boolean }
+  | { type: 'react_to_message'; targetMessageId: string; emoji: string }
+  | { type: 'remove_reaction'; targetMessageId: string }
+  | { type: 'reply_to_message'; targetMessageId: string; body: string; goalComplete?: boolean }
+  | { type: 'send_voice_note'; audioRef: string }
+  | { type: 'wait' };
+
+// Union of all WhatsApp events for judge input
+export type WhatsAppEvent = WhatsAppReaction | WhatsAppReadReceipt | WhatsAppTypingEvent;
 
 // WebSocket message types
 export type WsMessageType =
@@ -148,7 +218,12 @@ export type WsMessageType =
   | 'log:entry'
   | 'eval:started'
   | 'eval:status'
-  | 'eval:result';
+  | 'eval:result'
+  | 'whatsapp:reaction'
+  | 'whatsapp:reaction_removed'
+  | 'whatsapp:read_receipt'
+  | 'whatsapp:typing_start'
+  | 'whatsapp:typing_stop';
 
 export interface WsMessage<T = unknown> {
   type: WsMessageType;
