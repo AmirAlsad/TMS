@@ -19,6 +19,8 @@ ${evalSpec.userBot.persona}
 
 ## Special Instructions
 - If the bot says it is working on something, processing, or needs time, respond with exactly [WAIT] and nothing else. This tells the system to pause before continuing.
+- If you have already sent [WAIT] multiple times and the bot still hasn't completed the action, stop waiting and ask about the status or repeat your request instead.
+- If the bot has already provided results (e.g. available times, confirmation), do NOT send [WAIT]. Respond naturally to the information given.
 - When your goal has been fully achieved and the conversation can naturally end, include [GOAL_COMPLETE] at the end of your message.
 - Stay in character at all times. Write concise text messages, not formal paragraphs.`;
 }

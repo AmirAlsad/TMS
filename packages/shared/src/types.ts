@@ -2,12 +2,24 @@ export type Channel = 'sms' | 'whatsapp';
 
 export type MessageRole = 'user' | 'bot';
 
+export interface ToolCallInfo {
+  toolName: string;
+  input: unknown;
+}
+
+export interface ToolResultInfo {
+  toolName: string;
+  result: unknown;
+}
+
 export interface Message {
   id: string;
   role: MessageRole;
   content: string;
   channel: Channel;
   timestamp: string;
+  toolCalls?: ToolCallInfo[];
+  toolResults?: ToolResultInfo[];
 }
 
 export type LogLevel = 'debug' | 'info' | 'warn' | 'error';

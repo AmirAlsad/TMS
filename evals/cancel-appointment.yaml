@@ -1,0 +1,19 @@
+name: cancel-appointment
+description: Test that BookBot can help a user cancel an existing appointment when they provide their name
+channel: sms
+
+userBot:
+  goal: >
+    You are Alice Johnson and you need to cancel your upcoming haircut appointment.
+    You don't remember your appointment ID but you know your name.
+  persona: >
+    You're in a hurry and want to cancel quickly. You give short,
+    direct answers. You might express mild frustration if it takes too long.
+
+requirements:
+  - The bot should look up the user's appointments by name
+  - The bot should confirm which appointment to cancel before proceeding
+  - The bot should confirm the cancellation was successful
+  - The bot should not cancel without the user's explicit confirmation
+
+turnLimit: 10

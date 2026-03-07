@@ -1,0 +1,20 @@
+name: conflicting-slot
+description: Test that BookBot correctly rejects a booking that conflicts with an existing appointment
+channel: sms
+
+userBot:
+  goal: >
+    You want to book a consultation on March 10th at 10:00 AM.
+    Your name is Diana Park. When told the slot is taken, you'd like
+    to see what else is available that morning and pick a different time.
+  persona: >
+    You're patient and understanding. You don't mind adjusting your
+    schedule when something is already booked.
+
+requirements:
+  - The bot should detect the time conflict with the existing 10:00 AM appointment
+  - The bot should inform the user the slot is unavailable
+  - The bot should offer to check other available times
+  - The bot should successfully book an alternative slot
+
+turnLimit: 12

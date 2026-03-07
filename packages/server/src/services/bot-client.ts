@@ -1,9 +1,11 @@
-import type { Message, TmsConfig, TokenUsage, BotEndpointMetrics } from '@tms/shared';
+import type { Message, TmsConfig, TokenUsage, BotEndpointMetrics, ToolCallInfo, ToolResultInfo } from '@tms/shared';
 
 export interface BotResponse {
   text: string;
   usage?: TokenUsage;
   metrics?: BotEndpointMetrics;
+  toolCalls?: ToolCallInfo[];
+  toolResults?: ToolResultInfo[];
 }
 
 function extractUsage(data: unknown): TokenUsage | undefined {
@@ -80,5 +82,8 @@ export async function sendToBot(config: TmsConfig, message: Message): Promise<Bo
     throw new Error('Could not extract message from bot response');
   }
 
-  return { text, usage: extractUsage(data), metrics: extractMetrics(data) };
+  const toolCalls = Array.isArray(data.toolCalls) ? (data.toolCalls as ToolCallInfo[]) : undefined;
+  const toolResults = Array.isArray(data.toolResults) ? (data.toolResults as ToolResultInfo[]) : undefined;
+
+  return { text, usage: extractUsage(data), metrics: extractMetrics(data), toolCalls, toolResults };
 }

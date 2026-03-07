@@ -6,6 +6,7 @@ export interface JudgeInput {
   transcript: Message[];
   requirements: string[];
   specName: string;
+  specDescription?: string;
 }
 
 export interface JudgeOutput {
@@ -24,7 +25,18 @@ const RANK_TO_CLASSIFICATION: Classification[] = ['passed', 'needs_review', 'fai
 
 function buildPrompt(input: JudgeInput): { system: string; user: string } {
   const transcriptText = input.transcript
-    .map((m) => `[${m.role.toUpperCase()}]: ${m.content}`)
+    .map((m) => {
+      let line = `[${m.role.toUpperCase()}]: ${m.content}`;
+      if (m.toolCalls?.length) {
+        const calls = m.toolCalls.map((tc) => `  - ${tc.toolName}(${JSON.stringify(tc.input)})`).join('\n');
+        line += `\n[TOOL CALLS]:\n${calls}`;
+      }
+      if (m.toolResults?.length) {
+        const results = m.toolResults.map((tr) => `  - ${tr.toolName} → ${JSON.stringify(tr.result)}`).join('\n');
+        line += `\n[TOOL RESULTS]:\n${results}`;
+      }
+      return line;
+    })
     .join('\n');
 
   const requirementsList = input.requirements
@@ -35,6 +47,14 @@ function buildPrompt(input: JudgeInput): { system: string; user: string } {
 You will be given a conversation transcript and a list of requirements.
 For each requirement, classify it as one of: "passed", "needs_review", or "failed".
 Provide brief reasoning for each classification.
+
+When evaluating, consider:
+- Whether the bot used appropriate tools rather than fabricating data or making up information.
+- Whether tool inputs were correct and reasonable for the user's request.
+- Whether tool results were accurately communicated to the user without distortion.
+- The overall conversational quality, including tone, helpfulness, and logical flow.
+
+The transcript may include [TOOL CALLS] and [TOOL RESULTS] sections showing the bot's tool usage. Use these to verify the bot's behavior against the requirements.
 
 Respond with ONLY valid JSON in this exact format:
 {
@@ -48,7 +68,7 @@ Respond with ONLY valid JSON in this exact format:
 }`;
 
   const user = `## Eval Spec: ${input.specName}
-
+${input.specDescription ? `${input.specDescription}\n` : ''}
 ## Conversation Transcript
 ${transcriptText}
 

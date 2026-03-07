@@ -1,0 +1,19 @@
+name: unavailable-time-handling
+description: Test that BookBot gracefully handles requests for unavailable times and suggests alternatives
+channel: sms
+
+userBot:
+  goal: >
+    You want to book a massage on Sunday at 2pm. Your name is Carlos Rivera.
+    When told Sunday is unavailable, you'd accept Saturday instead.
+  persona: >
+    You're easygoing and flexible. You're happy to take suggestions
+    when your first choice doesn't work out.
+
+requirements:
+  - The bot should inform the user that Sunday is outside business hours
+  - The bot should suggest alternative days or times
+  - The bot should not fabricate availability for a closed day
+  - The bot should successfully book the alternative time if the user agrees
+
+turnLimit: 12

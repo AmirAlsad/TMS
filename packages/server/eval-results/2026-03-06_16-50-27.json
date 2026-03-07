@@ -1,0 +1,53 @@
+{
+  "id": "2026-03-06_16-50-27",
+  "specName": "schedule-meeting-polite-user",
+  "status": "failed",
+  "requirements": [
+    {
+      "description": "The bot should confirm the meeting details before scheduling"
+    },
+    {
+      "description": "The bot should ask about all necessary details (date, time, duration, attendees)"
+    },
+    {
+      "description": "The conversation should feel natural, not like a form fill"
+    },
+    {
+      "description": "The bot should not assume information that wasn't provided"
+    }
+  ],
+  "transcript": [
+    {
+      "id": "2d1638d2-e2e2-400d-a721-8517e1a31644",
+      "role": "user",
+      "content": "Hi, I'd like to schedule a team meeting for next Tuesday at 2pm.",
+      "channel": "sms",
+      "timestamp": "2026-03-06T21:50:28.337Z"
+    }
+  ],
+  "startedAt": "2026-03-06T21:50:27.522Z",
+  "error": "Bot returned 502: {\"error\":\"LLM request failed: tools.0.custom.input_schema.type: Field required\"}",
+  "completedAt": "2026-03-06T21:50:28.461Z",
+  "tokenUsage": {
+    "userBot": {
+      "promptTokens": 191,
+      "completionTokens": 21,
+      "totalTokens": 212
+    },
+    "judge": {
+      "promptTokens": 0,
+      "completionTokens": 0,
+      "totalTokens": 0
+    },
+    "botEndpoint": {
+      "promptTokens": 0,
+      "completionTokens": 0,
+      "totalTokens": 0
+    },
+    "total": {
+      "promptTokens": 191,
+      "completionTokens": 21,
+      "totalTokens": 212
+    }
+  }
+}

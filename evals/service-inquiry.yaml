@@ -1,0 +1,20 @@
+name: service-inquiry
+description: Test that BookBot can answer questions about available services, pricing, and business hours
+channel: sms
+
+userBot:
+  goal: >
+    You're a new customer and want to know what services are available,
+    how much they cost, and what the business hours are.
+    You're not ready to book yet — just gathering information.
+  persona: >
+    You're curious and ask follow-up questions. You compare prices
+    and ask about duration. You politely decline when asked if you want to book.
+
+requirements:
+  - The bot should list all available services with prices and durations
+  - The bot should provide accurate business hours when asked
+  - The bot should not pressure the user into booking
+  - The information provided should match the actual configured services and hours
+
+turnLimit: 10

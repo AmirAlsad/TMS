@@ -188,10 +188,32 @@ export class AppointmentStore {
     return { success: true, message: `Appointment ${appointmentId} has been cancelled.` };
   }
 
+  getAppointmentById(id: string): Appointment | undefined {
+    return this.appointments.find((a) => a.id === id);
+  }
+
   listAppointments(customerName: string): Appointment[] {
     return this.appointments.filter(
       (a) => a.customerName.toLowerCase() === customerName.toLowerCase() && a.status === 'confirmed',
     );
+  }
+
+  findNextAvailable(
+    serviceId: string,
+    fromDate: string,
+    maxDaysToSearch = 14,
+  ): { date: string; slots: { time: string; endTime: string }[] } | null {
+    const start = new Date(fromDate + 'T12:00:00');
+    for (let i = 0; i < maxDaysToSearch; i++) {
+      const d = new Date(start);
+      d.setDate(d.getDate() + i);
+      const dateStr = d.toISOString().split('T')[0]!;
+      const result = this.checkAvailability(dateStr, serviceId);
+      if (result.availableSlots.length > 0) {
+        return { date: dateStr, slots: result.availableSlots };
+      }
+    }
+    return null;
   }
 
   rescheduleAppointment(

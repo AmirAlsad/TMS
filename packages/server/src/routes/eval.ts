@@ -137,6 +137,7 @@ async function executeEval(
       transcript: conversationResult.transcript,
       requirements: spec.requirements,
       specName: spec.name,
+      specDescription: spec.description,
     });
 
     result.requirements = judgeOutput.requirements;

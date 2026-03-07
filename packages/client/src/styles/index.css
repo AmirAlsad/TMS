@@ -54,4 +54,12 @@
     background-image: radial-gradient(circle, rgba(255, 255, 255, 0.035) 1px, transparent 1px);
     background-size: 20px 20px;
   }
+
+  .formatted-content p + p {
+    margin-top: 0.35rem;
+  }
+  .formatted-content pre {
+    overflow-x: auto;
+    max-width: 100%;
+  }
 }

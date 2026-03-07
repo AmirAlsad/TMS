@@ -51,11 +51,12 @@ export async function runConversation(
   let goalCompleted = false;
 
   try {
+    let consecutiveWaits = 0;
+
     for (let turn = 0; turn < evalSpec.turnLimit; turn++) {
       // Generate user bot message
       let userContent: string;
       const turnUbUsage: TokenUsage = { ...ZERO_USAGE };
-      let consecutiveWaits = 0;
 
       while (true) {
         const reply = await userBot.generateReply(transcript, evalSpec);
@@ -72,6 +73,15 @@ export async function runConversation(
       }
 
       addToAccum(userBotTotal, turnUbUsage);
+
+      // If after exhausting waits the user bot still says [WAIT], skip this turn
+      if (userContent.trim() === WAIT_TOKEN) {
+        turnUsages.push({ turn, userBot: turnUbUsage });
+        continue;
+      }
+
+      // Got a real message — reset wait counter
+      consecutiveWaits = 0;
 
       // Check for goal completion
       if (userContent.includes(GOAL_COMPLETE_TOKEN)) {
@@ -97,6 +107,8 @@ export async function runConversation(
 
       const botResult = await sendToBot(config, lastUserMessage);
       const botMessage = createMessage('bot', botResult.text, evalSpec.channel);
+      if (botResult.toolCalls?.length) botMessage.toolCalls = botResult.toolCalls;
+      if (botResult.toolResults?.length) botMessage.toolResults = botResult.toolResults;
       transcript.push(botMessage);
       broadcast({ type: 'bot:message', payload: botMessage });
 

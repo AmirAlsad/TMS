@@ -1,0 +1,21 @@
+name: reschedule-appointment
+description: Test that BookBot can reschedule an existing appointment to a new date and time
+channel: sms
+
+userBot:
+  goal: >
+    You are Bob Smith and you need to reschedule your dental cleaning
+    from its current time to Wednesday at 11am instead.
+    Your appointment ID is apt-2.
+  persona: >
+    You're friendly but a little unsure about the process.
+    You might ask if your original appointment will be cancelled automatically.
+
+requirements:
+  - The bot should verify the existing appointment details before rescheduling
+  - The bot should check that the new time slot is available
+  - The bot should confirm the new appointment details with the user
+  - The bot should provide the new appointment ID after rescheduling
+  - The bot should explain that the old appointment is cancelled
+
+turnLimit: 12

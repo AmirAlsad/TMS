@@ -1,0 +1,254 @@
+{
+  "id": "2026-03-07_11-34-21",
+  "specName": "book-appointment-happy-path",
+  "status": "completed",
+  "requirements": [
+    {
+      "description": "The bot should check availability before booking",
+      "classification": "passed",
+      "reasoning": "The bot called check_availability for the haircut service on 2025-07-22 before any booking occurred, and presented the available slots to the user before proceeding."
+    },
+    {
+      "description": "The bot should confirm the appointment details (service, date, time) with the user before finalizing",
+      "classification": "passed",
+      "reasoning": "After the user selected the 10:00 AM slot, the bot explicitly summarized the date, time, service, and name, then asked 'Does everything look good?' before calling book_appointment."
+    },
+    {
+      "description": "The bot should provide a confirmation with an appointment ID after booking",
+      "classification": "passed",
+      "reasoning": "After booking, the bot provided a confirmation message including the appointment ID (apt-3), service details, date, time range, and price."
+    },
+    {
+      "description": "The conversation should feel natural, not like a form fill",
+      "classification": "passed",
+      "reasoning": "The bot used friendly language, emojis, and conversational phrasing throughout. It acknowledged the user's name naturally, expressed enthusiasm, and the flow felt like a genuine back-and-forth rather than a rigid step-by-step form."
+    }
+  ],
+  "transcript": [
+    {
+      "id": "2be34855-7ff9-4a8c-8e44-d7f113649d06",
+      "role": "user",
+      "content": "Hey! I'd like to book a haircut appointment for next Tuesday if possible. My name is Sarah Chen 😊",
+      "channel": "sms",
+      "timestamp": "2026-03-07T16:34:23.443Z"
+    },
+    {
+      "id": "198e80e2-392f-441a-a695-9cd217b2dc37",
+      "role": "bot",
+      "content": "Great news — Tuesday July 22nd has tons of availability! 🎉 Here are the open slots for a **Haircut (30 min, $35)**:\n\n9:00 | 9:30 | 10:00 | 10:30 | 11:00 | 11:30\n12:00 | 12:30 | 1:00 | 1:30 | 2:00 | 2:30\n3:00 | 3:30 | 4:00 | 4:30\n\nWhat time works best for you? 😊",
+      "channel": "sms",
+      "timestamp": "2026-03-07T16:34:28.419Z",
+      "toolCalls": [
+        {
+          "toolName": "check_availability",
+          "input": {
+            "date": "2025-07-22",
+            "serviceId": "haircut"
+          }
+        }
+      ],
+      "toolResults": [
+        {
+          "toolName": "check_availability",
+          "result": {
+            "date": "2025-07-22",
+            "availableSlots": [
+              {
+                "time": "09:00",
+                "endTime": "09:30"
+              },
+              {
+                "time": "09:30",
+                "endTime": "10:00"
+              },
+              {
+                "time": "10:00",
+                "endTime": "10:30"
+              },
+              {
+                "time": "10:30",
+                "endTime": "11:00"
+              },
+              {
+                "time": "11:00",
+                "endTime": "11:30"
+              },
+              {
+                "time": "11:30",
+                "endTime": "12:00"
+              },
+              {
+                "time": "12:00",
+                "endTime": "12:30"
+              },
+              {
+                "time": "12:30",
+                "endTime": "13:00"
+              },
+              {
+                "time": "13:00",
+                "endTime": "13:30"
+              },
+              {
+                "time": "13:30",
+                "endTime": "14:00"
+              },
+              {
+                "time": "14:00",
+                "endTime": "14:30"
+              },
+              {
+                "time": "14:30",
+                "endTime": "15:00"
+              },
+              {
+                "time": "15:00",
+                "endTime": "15:30"
+              },
+              {
+                "time": "15:30",
+                "endTime": "16:00"
+              },
+              {
+                "time": "16:00",
+                "endTime": "16:30"
+              },
+              {
+                "time": "16:30",
+                "endTime": "17:00"
+              }
+            ],
+            "businessHours": {
+              "dayOfWeek": 2,
+              "open": "09:00",
+              "close": "17:00"
+            },
+            "services": [
+              {
+                "id": "haircut",
+                "name": "Haircut",
+                "durationMinutes": 30,
+                "price": 35
+              },
+              {
+                "id": "consultation",
+                "name": "Consultation",
+                "durationMinutes": 60,
+                "price": 75
+              },
+              {
+                "id": "dental-cleaning",
+                "name": "Dental Cleaning",
+                "durationMinutes": 45,
+                "price": 120
+              },
+              {
+                "id": "massage",
+                "name": "Massage",
+                "durationMinutes": 60,
+                "price": 90
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "91f69627-b12d-4d81-b0e8-2edba5a8be37",
+      "role": "user",
+      "content": "Ooh great! I'll take the 10:00 AM slot please!",
+      "channel": "sms",
+      "timestamp": "2026-03-07T16:34:29.942Z"
+    },
+    {
+      "id": "f7253918-4786-4e8f-bc93-fcd538cd99a6",
+      "role": "bot",
+      "content": "Perfect choice! Just to confirm before I book:\n\n📅 **Date:** Tuesday, July 22nd\n⏰ **Time:** 10:00 AM\n✂️ **Service:** Haircut (30 min, $35)\n👤 **Name:** Sarah Chen\n\nDoes everything look good? ✅",
+      "channel": "sms",
+      "timestamp": "2026-03-07T16:34:32.755Z"
+    },
+    {
+      "id": "0bb978a5-b168-4db6-b9d4-31b89913b975",
+      "role": "user",
+      "content": "Yes, that all looks correct! Please go ahead and book it 😊",
+      "channel": "sms",
+      "timestamp": "2026-03-07T16:34:34.247Z"
+    },
+    {
+      "id": "d278db30-1dde-41c4-9629-6474ce2c7ed0",
+      "role": "bot",
+      "content": "You're all set, Sarah! 🎉 Here's your confirmation:\n\n✅ **Appointment Confirmed!**\n📋 **ID:** apt-3\n✂️ **Haircut** — Tue, July 22nd\n⏰ 10:00 - 10:30 AM\n💵 $35\n\nSave your appointment ID (**apt-3**) in case you need to reschedule or cancel. See you then! 😊",
+      "channel": "sms",
+      "timestamp": "2026-03-07T16:34:39.666Z",
+      "toolCalls": [
+        {
+          "toolName": "book_appointment",
+          "input": {
+            "customerName": "Sarah Chen",
+            "serviceId": "haircut",
+            "date": "2025-07-22",
+            "time": "10:00"
+          }
+        }
+      ],
+      "toolResults": [
+        {
+          "toolName": "book_appointment",
+          "result": {
+            "appointment": {
+              "id": "apt-3",
+              "customerName": "Sarah Chen",
+              "service": {
+                "id": "haircut",
+                "name": "Haircut",
+                "durationMinutes": 30,
+                "price": 35
+              },
+              "date": "2025-07-22",
+              "startTime": "10:00",
+              "endTime": "10:30",
+              "status": "confirmed"
+            },
+            "confirmation": "Booked Haircut for Sarah Chen on 2025-07-22 at 10:00-10:30. Appointment ID: apt-3"
+          }
+        }
+      ]
+    },
+    {
+      "id": "2b3b778a-4792-4f3c-b984-860ee9b96320",
+      "role": "user",
+      "content": "Perfect, thank you so much! I've got the confirmation ID saved (apt-3). See you Tuesday! 😊",
+      "channel": "sms",
+      "timestamp": "2026-03-07T16:34:41.635Z"
+    }
+  ],
+  "startedAt": "2026-03-07T16:34:21.677Z",
+  "classification": "passed",
+  "completedAt": "2026-03-07T16:34:47.212Z",
+  "tokenUsage": {
+    "userBot": {
+      "promptTokens": 1848,
+      "completionTokens": 105,
+      "totalTokens": 1953
+    },
+    "judge": {
+      "promptTokens": 1246,
+      "completionTokens": 339,
+      "totalTokens": 1585
+    },
+    "botEndpoint": {
+      "promptTokens": 6565,
+      "completionTokens": 331,
+      "totalTokens": 6896
+    },
+    "total": {
+      "promptTokens": 9659,
+      "completionTokens": 775,
+      "totalTokens": 10434
+    },
+    "botMetrics": {
+      "totalUncachedTokens": 6565,
+      "averageLatencyMs": 4395
+    }
+  }
+}

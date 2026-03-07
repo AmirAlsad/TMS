@@ -4,7 +4,15 @@
       "mcp__context7__resolve-library-id",
       "mcp__context7__query-docs",
       "Bash(pnpm:*)",
-      "Bash(git stash:*)"
+      "Bash(git stash:*)",
+      "Bash(npx tsc:*)",
+      "Bash(curl:*)",
+      "mcp__plugin_playwright_playwright__browser_navigate",
+      "mcp__plugin_playwright_playwright__browser_fill_form",
+      "mcp__plugin_playwright_playwright__browser_snapshot",
+      "mcp__plugin_playwright_playwright__browser_click",
+      "Bash(npx tsup:*)",
+      "Bash(ls:*)"
     ]
   }
 }

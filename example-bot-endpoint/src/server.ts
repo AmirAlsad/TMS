@@ -29,6 +29,8 @@ app.post('/chat', async (req, res) => {
       response: result.text,
       usage: result.usage,
       metrics: result.metrics,
+      toolCalls: result.toolCalls,
+      toolResults: result.toolResults,
       ...(result.structuredData ? { structuredData: result.structuredData } : {}),
     });
   } catch (err) {

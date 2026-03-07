@@ -1,4 +1,5 @@
 import type { Message } from '@tms/shared';
+import { FormattedContent } from './FormattedContent.js';
 
 interface ChatBubbleProps {
   message: Message;
@@ -46,7 +47,7 @@ export function ChatBubble({ message }: ChatBubbleProps) {
     return (
       <div className={`flex ${isUser ? 'justify-end' : 'justify-start'} animate-slide-up`}>
         <div className={`max-w-[75%] px-3 py-1.5 rounded-lg shadow-sm ${bubbleStyles}`}>
-          <p className="text-[13px] leading-relaxed whitespace-pre-wrap">{message.content}</p>
+          <FormattedContent content={message.content} channel={message.channel} role={message.role} />
           <p className={`text-[10px] mt-0.5 text-right ${timeStyles}`}>
             {time}
             {isUser && <CheckMarks />}
@@ -64,7 +65,7 @@ export function ChatBubble({ message }: ChatBubbleProps) {
   return (
     <div className={`flex ${isUser ? 'justify-end' : 'justify-start'} animate-slide-up`}>
       <div className={`max-w-[75%] px-3.5 py-2 rounded-2xl ${bubbleStyles}`}>
-        <p className="text-[13px] leading-relaxed whitespace-pre-wrap">{message.content}</p>
+        <FormattedContent content={message.content} channel={message.channel} role={message.role} />
         <p
           className={`text-[10px] mt-0.5 ${isUser ? 'text-indigo-200' : 'text-slate-400 dark:text-slate-500'}`}
         >
