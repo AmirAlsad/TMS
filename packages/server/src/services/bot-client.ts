@@ -67,6 +67,7 @@ export async function sendToBot(
 
   const body: Record<string, unknown> = {
     message: message.content,
+    messageId: message.id,
     channel: message.channel,
   };
 
@@ -159,16 +160,17 @@ export async function sendStatusCallback(
 
 /**
  * Fire a reaction callback to the bot endpoint, mimicking Twilio's inbound webhook
- * for WhatsApp reactions. Each reaction triggers its own immediate POST.
+ * for WhatsApp reactions. Returns a BotResponse if the bot chose to reply,
+ * or null if the bot stayed silent or the request failed.
  */
 export async function sendReactionCallback(
   config: TmsConfig,
   reaction: WhatsAppReaction,
-): Promise<void> {
+): Promise<BotResponse | null> {
   const { endpoint, headers = {} } = config.bot;
 
   try {
-    await fetch(endpoint, {
+    const response = await fetch(endpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...headers },
       body: JSON.stringify({
@@ -181,7 +183,36 @@ export async function sendReactionCallback(
         timestamp: reaction.timestamp,
       }),
     });
+
+    if (!response.ok) return null;
+
+    const data = await response.json();
+
+    // Bot indicated silence
+    if (data.silent) return null;
+
+    // Try to extract a text response
+    let text: string | undefined;
+    if (typeof data.response === 'string') text = data.response;
+    else if (typeof data.message === 'string') text = data.message;
+    else if (typeof data.content === 'string') text = data.content;
+    else if (typeof data.text === 'string') text = data.text;
+
+    if (!text) return null;
+
+    const toolCalls = Array.isArray(data.toolCalls) ? (data.toolCalls as ToolCallInfo[]) : undefined;
+    const toolResults = Array.isArray(data.toolResults)
+      ? (data.toolResults as ToolResultInfo[])
+      : undefined;
+
+    return {
+      text,
+      usage: extractUsage(data),
+      metrics: extractMetrics(data),
+      toolCalls,
+      toolResults,
+    };
   } catch {
-    // Reaction callbacks are fire-and-forget
+    return null;
   }
 }

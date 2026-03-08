@@ -21,6 +21,7 @@ export function App() {
   const toggleConfig = useStore((s) => s.toggleConfig);
   const mode = useStore((s) => s.mode);
   const theme = useStore((s) => s.theme);
+  const setReadReceiptMode = useStore((s) => s.setReadReceiptMode);
   const [rightTab, setRightTab] = useState<RightTab>('eval');
 
   const isAutomated = mode === 'automated';
@@ -28,6 +29,18 @@ export function App() {
   useEffect(() => {
     document.documentElement.classList.toggle('dark', theme === 'dark');
   }, [theme]);
+
+  // Sync read receipt mode from server config on mount
+  useEffect(() => {
+    fetch('/api/config')
+      .then((r) => r.json())
+      .then((cfg) => {
+        if (cfg.whatsapp?.readReceipts?.mode) {
+          setReadReceiptMode(cfg.whatsapp.readReceipts.mode);
+        }
+      })
+      .catch(() => {});
+  }, [setReadReceiptMode]);
 
   return (
     <div className="h-full flex flex-col">

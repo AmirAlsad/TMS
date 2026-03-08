@@ -55,6 +55,8 @@ export function ChatBubble({ message }: ChatBubbleProps) {
 
   const readState = useStore((s) => s.messageReadStates[message.id]) ?? 'sent';
   const reactions = useStore((s) => s.messageReactions[message.id]) ?? [];
+  const readReceiptMode = useStore((s) => s.readReceiptMode);
+  const setReadState = useStore((s) => s.setReadState);
   const quotedOriginalRole = useStore((s) => {
     if (!message.quotedReply) return undefined;
     const orig = s.messages.find((m) => m.id === message.quotedReply!.targetMessageId);
@@ -105,6 +107,22 @@ export function ChatBubble({ message }: ChatBubbleProps) {
       addReaction(message.id, emoji, true);
     }
   };
+
+  const handleManualRead = async () => {
+    if (readState === 'read' || isUser) return;
+    setReadState(message.id, 'read');
+    try {
+      await fetch('/api/whatsapp/read', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ upToMessageId: message.id }),
+      });
+    } catch (err) {
+      console.error('Failed to mark as read:', err);
+    }
+  };
+
+  const showManualRead = isWhatsApp && !isUser && readReceiptMode === 'manual' && readState !== 'read';
 
   if (isWhatsApp) {
     const bubbleStyles = isUser
@@ -176,10 +194,21 @@ export function ChatBubble({ message }: ChatBubbleProps) {
             <ReactionBadges reactions={reactions} onRemove={handleReactionRemove} />
           )}
 
-          <p className={`text-[10px] mt-0.5 text-right ${timeStyles}`}>
+          <p className={`text-[10px] mt-0.5 text-right flex items-center justify-end gap-1 ${timeStyles}`}>
             {time}
             {isUser && <CheckMarks status="delivered" />}
             {!isUser && <CheckMarks status={readState} />}
+            {showManualRead && (
+              <button
+                onClick={handleManualRead}
+                className="ml-0.5 text-[9px] font-medium px-1.5 py-0.5 rounded
+                           bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400
+                           hover:bg-blue-200 dark:hover:bg-blue-900/60 transition-colors"
+                title="Mark as read"
+              >
+                Read
+              </button>
+            )}
           </p>
         </div>
       </div>

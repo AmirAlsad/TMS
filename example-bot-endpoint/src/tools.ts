@@ -2,6 +2,26 @@ import { tool } from 'ai';
 import { z } from 'zod';
 import type { AppointmentStore } from './store.js';
 
+export function createReactionTool(callbackUrl: string) {
+  return {
+    react_to_message: tool({
+      description: 'React to a message with an emoji. Use sparingly for acknowledgment.',
+      inputSchema: z.object({
+        targetMessageId: z.string().describe('ID of the message to react to'),
+        emoji: z.string().describe('Emoji to react with (e.g. thumbs up, heart, fire)'),
+      }),
+      execute: async ({ targetMessageId, emoji }) => {
+        await fetch(`${callbackUrl}/reaction`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ targetMessageId, emoji, fromUser: false }),
+        });
+        return { success: true, emoji, targetMessageId };
+      },
+    }),
+  };
+}
+
 export function createTools(store: AppointmentStore) {
   return {
     get_services: tool({

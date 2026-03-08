@@ -121,6 +121,24 @@ export class ReadReceiptService {
     return this.readIds.has(messageId);
   }
 
+  /** Update the read receipt config at runtime. */
+  updateConfig(newConfig: ReadReceiptConfig): void {
+    // Clear all existing auto-read timers when mode changes
+    for (const timer of this.timers.values()) {
+      clearTimeout(timer);
+    }
+    this.timers.clear();
+
+    this.config = newConfig;
+
+    // If switching to auto_delay, schedule timers for existing unread messages
+    if (newConfig.mode === 'auto_delay') {
+      for (const [id] of this.unread) {
+        this.scheduleAutoRead(id);
+      }
+    }
+  }
+
   /** Clean up all pending timers. */
   destroy(): void {
     for (const timer of this.timers.values()) {

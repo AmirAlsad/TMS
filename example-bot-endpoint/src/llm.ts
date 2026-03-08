@@ -4,14 +4,27 @@ import { openai } from '@ai-sdk/openai';
 import type { BotConfig } from './config.js';
 import { log } from './logger.js';
 import { AppointmentStore } from './store.js';
-import { createTools } from './tools.js';
+import { createTools, createReactionTool } from './tools.js';
 
 const registry = createProviderRegistry({ anthropic, openai });
+
+/** Per-million-token pricing for cost estimation. */
+const MODEL_PRICING: Record<string, { input: number; cachedInput: number; output: number }> = {
+  'anthropic:claude-sonnet-4-6': { input: 3, cachedInput: 0.3, output: 15 },
+  'anthropic:claude-haiku-4-5': { input: 0.8, cachedInput: 0.08, output: 4 },
+  'anthropic:claude-opus-4-6': { input: 15, cachedInput: 1.5, output: 75 },
+};
 
 const history = new Map<string, ModelMessage[]>();
 
 const store = new AppointmentStore();
-const tools = createTools(store);
+const baseTools = createTools(store);
+
+export interface ChatOptions {
+  messageId?: string;
+  quotedReply?: { targetMessageId: string; quotedBody: string };
+  callbackUrl?: string;
+}
 
 export function initLlm(_config: BotConfig): void {
   // No client initialization needed with AI SDK — uses env vars automatically
@@ -33,6 +46,7 @@ export interface ChatResult {
   metrics: {
     cachedTokens?: number;
     uncachedTokens?: number;
+    cost?: number;
     latencyMs: number;
   };
   structuredData?: Record<string, unknown>;
@@ -44,9 +58,27 @@ export async function chat(
   config: BotConfig,
   message: string,
   channel: string,
+  options?: ChatOptions,
 ): Promise<ChatResult> {
   const channelHistory = history.get(channel) ?? [];
-  channelHistory.push({ role: 'user', content: message });
+
+  // Format user message with metadata for LLM context
+  const parts: string[] = [];
+  if (options?.messageId) {
+    parts.push(`[msg:${options.messageId}]`);
+  }
+  if (options?.quotedReply) {
+    parts.push(`[Replying to: "${options.quotedReply.quotedBody}"]`);
+  }
+  parts.push(message);
+  const formattedMessage = parts.join('\n');
+
+  channelHistory.push({ role: 'user', content: formattedMessage });
+
+  // Merge reaction tool when callbackUrl is available
+  const tools = options?.callbackUrl
+    ? { ...baseTools, ...createReactionTool(options.callbackUrl) }
+    : baseTools;
 
   const isAnthropic = config.model.startsWith('anthropic:');
 
@@ -91,6 +123,19 @@ export async function chat(
   const cachedTokens = result.usage.inputTokenDetails?.cacheReadTokens;
   const uncachedTokens = result.usage.inputTokenDetails?.noCacheTokens;
 
+  // Calculate estimated cost
+  const pricing = MODEL_PRICING[config.model];
+  let cost: number | undefined;
+  if (pricing) {
+    const inputTokens = result.usage.inputTokens ?? 0;
+    const outputTokens = result.usage.outputTokens ?? 0;
+    const cached = cachedTokens ?? 0;
+    const uncached = inputTokens - cached;
+    cost =
+      (uncached * pricing.input + cached * pricing.cachedInput + outputTokens * pricing.output) /
+      1_000_000;
+  }
+
   // Extract structured data from tool results (last booking/reschedule result)
   let structuredData: Record<string, unknown> | undefined;
   for (const step of result.steps) {
@@ -128,6 +173,7 @@ export async function chat(
     metrics: {
       ...(cachedTokens != null ? { cachedTokens } : {}),
       ...(uncachedTokens != null ? { uncachedTokens } : {}),
+      ...(cost != null ? { cost } : {}),
       latencyMs,
     },
     toolCalls,

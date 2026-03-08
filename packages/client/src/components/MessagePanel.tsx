@@ -1,4 +1,5 @@
 import { useRef, useEffect, useState } from 'react';
+import { useShallow } from 'zustand/react/shallow';
 import { useStore } from '../stores/store';
 import { ChatBubble } from './ChatBubble';
 import { ChannelHeader } from './ChannelHeader';
@@ -10,7 +11,7 @@ interface MessagePanelProps {
 }
 
 export function MessagePanel({ readOnly = false }: MessagePanelProps) {
-  const messages = useStore((s) => s.messages);
+  const messages = useStore(useShallow((s) => s.messages.filter((m) => m.channel === s.channel)));
   const channel = useStore((s) => s.channel);
   const replyingTo = useStore((s) => s.replyingTo);
   const setReplyingTo = useStore((s) => s.setReplyingTo);

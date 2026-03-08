@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import type { TmsConfig, WhatsAppReaction, WhatsAppTypingEvent } from '@tms/shared';
+import type { TmsConfig, Message, WhatsAppReaction, WhatsAppTypingEvent } from '@tms/shared';
 import { whatsAppReactionSchema, whatsAppTypingEventSchema } from '@tms/shared';
 import type { BroadcastFn } from '../ws/handler.js';
 import type { ReadReceiptService } from '../services/read-receipt.js';
@@ -30,9 +30,23 @@ export function createWhatsAppRouter(
     const reaction: WhatsAppReaction = parsed.data;
     broadcast({ type: 'whatsapp:reaction', payload: reaction });
 
-    // Fire immediate callback to bot endpoint (matches Twilio webhook timing)
+    // Fire callback to bot endpoint and broadcast response if bot replies
     if (reaction.fromUser) {
-      sendReactionCallback(config, reaction).catch(() => {});
+      sendReactionCallback(config, reaction)
+        .then((botResult) => {
+          if (botResult) {
+            const botMessage: Message = {
+              id: crypto.randomUUID(),
+              role: 'bot' as const,
+              content: botResult.text,
+              channel: 'whatsapp',
+              timestamp: new Date().toISOString(),
+            };
+            broadcast({ type: 'bot:message', payload: botMessage });
+            readReceiptService.trackMessage(botMessage);
+          }
+        })
+        .catch(() => {});
     }
 
     res.json({ ok: true, reaction });
@@ -59,9 +73,23 @@ export function createWhatsAppRouter(
     const reaction: WhatsAppReaction = parsed.data;
     broadcast({ type: 'whatsapp:reaction_removed', payload: reaction });
 
-    // Fire immediate callback to bot endpoint
+    // Fire callback to bot endpoint and broadcast response if bot replies
     if (reaction.fromUser) {
-      sendReactionCallback(config, reaction).catch(() => {});
+      sendReactionCallback(config, reaction)
+        .then((botResult) => {
+          if (botResult) {
+            const botMessage: Message = {
+              id: crypto.randomUUID(),
+              role: 'bot' as const,
+              content: botResult.text,
+              channel: 'whatsapp',
+              timestamp: new Date().toISOString(),
+            };
+            broadcast({ type: 'bot:message', payload: botMessage });
+            readReceiptService.trackMessage(botMessage);
+          }
+        })
+        .catch(() => {});
     }
 
     res.json({ ok: true });
@@ -102,6 +130,18 @@ export function createWhatsAppRouter(
     const wsType = active ? 'whatsapp:typing_start' : 'whatsapp:typing_stop';
     broadcast({ type: wsType, payload: typingEvent });
     res.json({ ok: true });
+  });
+
+  // PUT /api/whatsapp/read-receipt-mode — update read receipt mode at runtime
+  router.put('/read-receipt-mode', (req, res) => {
+    const { mode, autoDelayMs } = req.body;
+    const validModes = ['auto_delay', 'manual', 'on_response'];
+    if (!mode || !validModes.includes(mode)) {
+      res.status(400).json({ error: `mode must be one of: ${validModes.join(', ')}` });
+      return;
+    }
+    readReceiptService.updateConfig({ mode, autoDelayMs });
+    res.json({ ok: true, mode, autoDelayMs });
   });
 
   return router;

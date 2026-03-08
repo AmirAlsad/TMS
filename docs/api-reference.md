@@ -320,6 +320,40 @@ curl -X POST http://localhost:4000/api/whatsapp/typing \
 
 ---
 
+### PUT /api/whatsapp/read-receipt-mode
+
+Change the read receipt mode at runtime.
+
+**Request body:**
+
+```json
+{
+  "mode": "manual",
+  "autoDelayMs": 2000
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `mode` | `"auto_delay"` \| `"manual"` \| `"on_response"` | Yes | Read receipt mode. |
+| `autoDelayMs` | `number` | No | Delay in ms for `auto_delay` mode. Defaults to 2000. |
+
+**Response:** `200`
+
+```json
+{ "ok": true, "mode": "manual" }
+```
+
+```bash
+curl -X PUT http://localhost:4000/api/whatsapp/read-receipt-mode \
+  -H "Content-Type: application/json" \
+  -d '{"mode": "auto_delay", "autoDelayMs": 3000}'
+```
+
+**Errors:** `400` if `mode` is missing or not one of the valid values.
+
+---
+
 ### POST /api/whatsapp/read
 
 Manually mark messages as read up to a given message ID.

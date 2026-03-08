@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { Message, LogEntry, Channel, EvalResult, ReadStatus } from '@tms/shared';
+import type { Message, LogEntry, Channel, EvalResult, ReadStatus, ReadReceiptMode } from '@tms/shared';
 
 export type AppMode = 'playground' | 'automated';
 export type Theme = 'light' | 'dark';
@@ -37,6 +37,7 @@ interface TmsStore {
   messageReactions: Record<string, { emoji: string; fromUser: boolean }[]>;
   replyingTo: Message | null;
   typingIndicator: { active: boolean; role: 'user' | 'bot' } | null;
+  readReceiptMode: ReadReceiptMode;
 
   addMessage: (message: Message) => void;
   addLog: (log: LogEntry) => void;
@@ -62,6 +63,7 @@ interface TmsStore {
   removeReaction: (messageId: string, emoji: string, fromUser: boolean) => void;
   setReplyingTo: (message: Message | null) => void;
   setTypingIndicator: (indicator: { active: boolean; role: 'user' | 'bot' } | null) => void;
+  setReadReceiptMode: (mode: ReadReceiptMode) => void;
 }
 
 export const useStore = create<TmsStore>((set, get) => ({
@@ -82,14 +84,30 @@ export const useStore = create<TmsStore>((set, get) => ({
   messageReactions: {},
   replyingTo: null,
   typingIndicator: null,
+  readReceiptMode: 'on_response',
 
   addMessage: (message) => set((s) => ({ messages: [...s.messages, message] })),
   addLog: (log) => set((s) => ({ logs: [...s.logs, log] })),
-  setChannel: (channel) => set({ channel }),
+  setChannel: (channel) => set({ channel, replyingTo: null, typingIndicator: null }),
   setBotEndpoint: (endpoint) => set({ botEndpoint: endpoint }),
   toggleConfig: () => set((s) => ({ showConfig: !s.showConfig })),
   clearMessages: () =>
-    set({ messages: [], messageReadStates: {}, messageReactions: {}, replyingTo: null, typingIndicator: null }),
+    set((s) => {
+      const channelMsgIds = new Set(
+        s.messages.filter((m) => m.channel === s.channel).map((m) => m.id),
+      );
+      return {
+        messages: s.messages.filter((m) => m.channel !== s.channel),
+        messageReadStates: Object.fromEntries(
+          Object.entries(s.messageReadStates).filter(([id]) => !channelMsgIds.has(id)),
+        ),
+        messageReactions: Object.fromEntries(
+          Object.entries(s.messageReactions).filter(([id]) => !channelMsgIds.has(id)),
+        ),
+        replyingTo: null,
+        typingIndicator: null,
+      };
+    }),
   clearLogs: () => set({ logs: [] }),
   setTheme: (theme) => {
     localStorage.setItem('tms-theme', theme);
@@ -103,7 +121,11 @@ export const useStore = create<TmsStore>((set, get) => ({
 
   setMode: (mode) => set({ mode }),
   setEvalSpecs: (specs) => set({ evalSpecs: specs }),
-  startEval: (eval_) => set({ currentEval: eval_, messages: [] }),
+  startEval: (eval_) =>
+    set((s) => ({
+      currentEval: eval_,
+      messages: s.messages.filter((m) => m.channel !== s.channel),
+    })),
   updateEvalStatus: (update) =>
     set((s) => ({
       currentEval:
@@ -131,10 +153,14 @@ export const useStore = create<TmsStore>((set, get) => ({
   addReaction: (messageId, emoji, fromUser) =>
     set((s) => {
       const existing = s.messageReactions[messageId] ?? [];
+      // Skip if this exact reaction already exists (dedup optimistic + WebSocket)
+      if (existing.some((r) => r.emoji === emoji && r.fromUser === fromUser)) return s;
+      // Each source (user/bot) can only have one reaction per message — replace previous
+      const filtered = existing.filter((r) => r.fromUser !== fromUser);
       return {
         messageReactions: {
           ...s.messageReactions,
-          [messageId]: [...existing, { emoji, fromUser }],
+          [messageId]: [...filtered, { emoji, fromUser }],
         },
       };
     }),
@@ -155,4 +181,5 @@ export const useStore = create<TmsStore>((set, get) => ({
     }),
   setReplyingTo: (message) => set({ replyingTo: message }),
   setTypingIndicator: (indicator) => set({ typingIndicator: indicator }),
+  setReadReceiptMode: (mode) => set({ readReceiptMode: mode }),
 }));

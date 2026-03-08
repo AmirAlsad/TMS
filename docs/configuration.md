@@ -74,7 +74,7 @@ WhatsApp-specific simulation settings. These apply to both interactive playgroun
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `whatsapp.readReceipts.mode` | `"auto_delay"` \| `"manual"` \| `"on_response"` | `"on_response"` | How read receipts are sent. `auto_delay` marks messages as read after a timer. `manual` requires explicit API calls. `on_response` marks all unread messages as read when the user sends a reply. |
+| `whatsapp.readReceipts.mode` | `"auto_delay"` \| `"manual"` \| `"on_response"` | `"on_response"` | How read receipts are sent. `auto_delay` marks messages as read after a timer. `manual` requires explicit API calls or clicking the "Read" button in the UI. `on_response` marks all unread messages as read when the user sends a reply. Can be changed at runtime via the settings panel or `PUT /api/whatsapp/read-receipt-mode`. |
 | `whatsapp.readReceipts.autoDelayMs` | `number` | `2000` | Delay in milliseconds before auto-marking as read. Only used when mode is `auto_delay`. |
 
 #### `whatsapp.userBot`

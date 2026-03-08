@@ -10,11 +10,11 @@ The `channel: "whatsapp"` parameter is forwarded to your bot endpoint on every r
 
 Users can react to any message with an emoji. Reactions fire immediate callbacks to the bot endpoint, matching Twilio's webhook behavior where each reaction triggers its own inbound POST.
 
-**Playground mode:** Hover over a message to reveal action buttons. Click the smiley-face button to open a picker with 6 preset emoji. Click an emoji to react; click it again on the reaction badge to remove it.
+**Playground mode:** Hover over a message to reveal action buttons. Click the smiley-face button to open a picker with 6 preset emoji. Click an emoji to react; click it again on the reaction badge to remove it. Each party (user/bot) can only have one reaction per message -- reacting with a new emoji replaces the previous one, matching real WhatsApp behavior.
 
 **Automated mode:** The user bot has `react_to_message` and `remove_reaction` tools. The eval spec controls whether reactions are enabled via `whatsapp.userBot.allowReactions`.
 
-Reaction badges display beneath the message content, grouped by emoji.
+Reaction badges display beneath the message content, grouped by emoji. Because each party can only have one reaction, a badge always shows a single reaction per source.
 
 ### Quoted Replies
 
@@ -38,13 +38,19 @@ The typing indicator auto-scrolls the message panel and clears when a new messag
 
 ### Read Receipts
 
-Read receipts track whether the simulated user has read the bot's messages. Three modes are available, configurable per eval spec or session:
+Read receipts track whether the simulated user has read the bot's messages. Three modes are available, configurable per eval spec, session, or at runtime via the settings panel:
 
 | Mode | Description | Best for |
 |------|-------------|----------|
 | `on_response` | Messages marked read when the user sends any reply (default) | Most natural default for automated evals |
 | `auto_delay` | Messages marked read after a configurable delay (`autoDelayMs`, default 2000ms) | Simulating a passive user; fast eval runs |
-| `manual` | User explicitly clicks to mark messages as read | Precise control; testing exact timing behavior |
+| `manual` | User explicitly clicks a "Read" button on bot messages to mark them as read | Precise control; testing exact timing behavior |
+
+**Playground mode** offers two options via the settings panel: **Automatic** (`on_response`) or **Manual**. In manual mode, a small "Read" button appears next to the checkmarks on unread bot messages. Clicking it marks all messages up to and including that message as read.
+
+**Automated mode** offers two options via the settings panel: **Automatic** (`on_response`) or **Auto delay** (`auto_delay`). When auto delay is selected, a delay input (in milliseconds) appears to configure the timer.
+
+The read receipt mode can also be changed at runtime via `PUT /api/whatsapp/read-receipt-mode` (see [API Reference](./api-reference.md)).
 
 When a read event fires, all messages up to and including the target are marked as read. This matches real WhatsApp behavior where opening a chat clears the entire unread stack.
 

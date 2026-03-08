@@ -1,9 +1,11 @@
 Here's a list of all the changes and features that need to be implemented to the TMS:
 
-- The differences between WhatsApp and SMS need to be established. Includes read receipts, reactions, and replies.
+- Complete audio message support for WhatsApp.
 
-- Clear documentation for the different components. Find out how other platforms take care of it. Look at Pipecat as an example.
+- Add support for organizing and batching evals.
 
-- Make sure the LLM-as-a-Judge is able to see tool calls.
+- Add support for images / stickers / files in WhatsApp.
 
-- Give tooling and any other special capabilities to the example bot endpoint.
+- Make the UI pretty, just for the love of the game (and the flex).
+
+- Add iMessage support (mostly copying from WhatsApp).
