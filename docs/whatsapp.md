@@ -62,6 +62,38 @@ Audio message support for sending synthetic voice notes referenced by `audioRef`
 
 **Status:** Partially implemented. The user bot tool and type definitions exist, but the full recording/playback UI is not yet built.
 
+### Media Attachments
+
+WhatsApp channel supports sending and receiving media attachments -- images, stickers, audio, video, documents, and contacts -- mirroring the media types supported by Twilio's WhatsApp API. Media is not available on the SMS channel; the attachment button only appears when the channel is set to `whatsapp`.
+
+**Playground mode:** A paperclip button appears next to the text input. Clicking it opens a WhatsApp-style attachment menu with four categories: **Photos & Videos**, **Document**, **Audio**, and **Contact**. Selecting a category opens a file picker filtered to the appropriate file types. Files are uploaded via `POST /api/media` (multipart form data) and the resulting URL is attached to the outgoing message. The 16MB file size limit is enforced server-side.
+
+**Automated mode:** The user bot can include `mediaType` and `mediaUrl` fields in its messages. The bot endpoint receives these fields and can also return `mediaType` and `mediaUrl` in its response to send media back to the user.
+
+**Supported types:**
+
+| Category | MIME Types | File Extensions |
+|----------|-----------|-----------------|
+| Images | `image/jpeg`, `image/png` | `.jpg`, `.png` |
+| Stickers | `image/webp` | `.webp` |
+| Audio | `audio/ogg`, `audio/amr`, `audio/3gpp`, `audio/aac`, `audio/mpeg` | `.ogg`, `.amr`, `.3gpp`, `.aac`, `.mp3` |
+| Video | `video/mp4` | `.mp4` |
+| Documents | `application/pdf`, `application/msword`, etc. | `.pdf`, `.doc`, `.docx`, `.pptx`, `.xlsx` |
+| Contacts | `text/vcard` | `.vcf` |
+
+**Rendering behavior:**
+
+- **Images** render inline within the message bubble. Clicking an image opens a full-screen lightbox overlay. Images are the only media type that supports a text caption alongside the attachment.
+- **Stickers** render without a bubble background at 180px, matching WhatsApp's native sticker display.
+- **Audio** uses native `<audio>` controls within the message bubble.
+- **Video** uses native `<video>` controls within the message bubble.
+- **Documents** render as file cards with a link to open the document in a new tab.
+- **Contacts** render as vCard cards with a download link.
+
+**Caption constraints:** Only images support text captions. When a video, audio file, document, or contact is attached, the text input is disabled -- the media is sent without accompanying text. This matches WhatsApp's native behavior.
+
+**Storage:** Uploaded files are stored in the `.tms/media/` directory and served via `GET /api/media/:filename`. The media directory is cleaned up automatically on server shutdown.
+
 ### UI Differences
 
 When the channel is `whatsapp`, the UI switches to WhatsApp-styled visuals:

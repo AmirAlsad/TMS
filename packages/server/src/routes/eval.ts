@@ -8,14 +8,27 @@ import type {
   TokenUsageSummary,
   ConversationResult,
   BotEndpointSummary,
+  BatchRun,
 } from '@tms/shared';
 import { evalSpecSchema } from '@tms/shared';
 import type { BroadcastFn } from '../ws/handler.js';
 import { runConversation } from '../services/conversation.js';
 import { runHook } from '../services/hooks.js';
 import { evaluateTranscript } from '../services/evaluator.js';
-import { saveEvalResult, getEvalResult, listEvalResults, generateEvalId } from '../services/eval-results.js';
+import {
+  saveEvalResult,
+  getEvalResult,
+  listEvalResults,
+  generateEvalId,
+} from '../services/eval-results.js';
 import { loadEvalSpec, listEvalSpecs } from '../services/eval-spec-loader.js';
+import { loadEvalSuite, listEvalSuites } from '../services/suite-loader.js';
+import {
+  generateBatchId,
+  saveBatchRun,
+  getBatchRun,
+  listBatchRuns,
+} from '../services/batch-runs.js';
 
 const ZERO_USAGE: TokenUsage = { promptTokens: 0, completionTokens: 0, totalTokens: 0 };
 
@@ -82,9 +95,6 @@ function parseSpec(body: Record<string, unknown>): EvalSpec {
   let rawSpec: unknown;
   if (typeof body.yaml === 'string') {
     rawSpec = parseYaml(body.yaml);
-  } else if (typeof body.spec === 'string') {
-    // Will be handled by loadEvalSpec in the caller
-    throw new Error('LOAD_BY_NAME');
   } else if (body.spec && typeof body.spec === 'object') {
     rawSpec = body.spec;
   } else {
@@ -98,6 +108,7 @@ async function executeEval(
   evalId: string,
   config: TmsConfig,
   broadcast: BroadcastFn,
+  batchId?: string,
 ): Promise<void> {
   const result: EvalResult = {
     id: evalId,
@@ -106,6 +117,7 @@ async function executeEval(
     requirements: spec.requirements.map((r) => ({ description: r })),
     transcript: [],
     startedAt: new Date().toISOString(),
+    ...(batchId ? { batchId } : {}),
   };
 
   await saveEvalResult(result);
@@ -157,6 +169,69 @@ async function executeEval(
   broadcast({ type: 'eval:result', payload: result });
 }
 
+function generateSpecEvalId(): string {
+  const suffix = Math.random().toString(36).slice(2, 6);
+  return `${generateEvalId()}_${suffix}`;
+}
+
+async function runBatch(
+  specNames: string[],
+  config: TmsConfig,
+  broadcast: BroadcastFn,
+  options: { parallel?: boolean; suiteName?: string; label?: string },
+): Promise<{ batchRun: BatchRun; ids: string[] }> {
+  const loadedSpecs: EvalSpec[] = [];
+  for (const name of specNames) {
+    loadedSpecs.push(await loadEvalSpec(name));
+  }
+
+  const batchId = generateBatchId();
+  const ids = loadedSpecs.map(() => generateSpecEvalId());
+
+  const batchRun: BatchRun = {
+    id: batchId,
+    label: options.label ?? options.suiteName ?? 'Ad-hoc batch',
+    suiteName: options.suiteName,
+    specNames: loadedSpecs.map((s) => s.name),
+    specIds: ids,
+    status: 'running',
+    startedAt: new Date().toISOString(),
+  };
+
+  await saveBatchRun(batchRun);
+  broadcast({ type: 'batch:started', payload: batchRun });
+
+  const execute = async () => {
+    const run = (spec: EvalSpec, id: string) =>
+      executeEval(spec, id, config, broadcast, batchId).catch((err) =>
+        console.error(`Batch eval for ${spec.name} failed:`, err),
+      );
+
+    if (options.parallel) {
+      await Promise.all(loadedSpecs.map((spec, i) => run(spec, ids[i]!)));
+    } else {
+      for (let i = 0; i < loadedSpecs.length; i++) {
+        await run(loadedSpecs[i]!, ids[i]!);
+      }
+    }
+
+    batchRun.status = 'completed';
+    batchRun.completedAt = new Date().toISOString();
+    await saveBatchRun(batchRun);
+    broadcast({ type: 'batch:completed', payload: batchRun });
+  };
+
+  execute().catch((err) => {
+    console.error('Batch execution failed:', err);
+    batchRun.status = 'failed';
+    batchRun.completedAt = new Date().toISOString();
+    saveBatchRun(batchRun).catch(() => {});
+    broadcast({ type: 'batch:completed', payload: batchRun });
+  });
+
+  return { batchRun, ids };
+}
+
 export function createEvalRouter(config: TmsConfig, broadcast: BroadcastFn) {
   const router = Router();
 
@@ -167,6 +242,25 @@ export function createEvalRouter(config: TmsConfig, broadcast: BroadcastFn) {
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Unknown error';
       res.status(500).json({ error: message });
+    }
+  });
+
+  router.get('/suites', async (_req, res) => {
+    try {
+      const suites = await listEvalSuites();
+      res.json({ suites });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Unknown error';
+      res.status(500).json({ error: message });
+    }
+  });
+
+  router.get('/suites/:name', async (req, res) => {
+    try {
+      const suite = await loadEvalSuite(req.params.name);
+      res.json(suite);
+    } catch {
+      res.status(404).json({ error: `Suite "${req.params.name}" not found` });
     }
   });
 
@@ -193,43 +287,68 @@ export function createEvalRouter(config: TmsConfig, broadcast: BroadcastFn) {
   });
 
   router.post('/batch', async (req, res) => {
-    const { specs } = req.body;
+    const { specs, parallel } = req.body;
 
     if (!Array.isArray(specs) || specs.length === 0) {
       res.status(400).json({ error: 'specs must be a non-empty array of spec names' });
       return;
     }
 
-    try {
-      const loadedSpecs: EvalSpec[] = [];
-      for (const specName of specs) {
-        if (typeof specName !== 'string') {
-          res.status(400).json({ error: 'Each spec must be a string name' });
-          return;
-        }
-        loadedSpecs.push(await loadEvalSpec(specName));
+    for (const specName of specs) {
+      if (typeof specName !== 'string') {
+        res.status(400).json({ error: 'Each spec must be a string name' });
+        return;
       }
+    }
 
-      const ids: string[] = loadedSpecs.map((_, i) => {
-        const id = generateEvalId();
-        return i === 0 ? id : `${id}_${i}`;
+    try {
+      const { batchRun, ids } = await runBatch(specs, config, broadcast, {
+        parallel: !!parallel,
       });
-      res.json({ ids });
-
-      (async () => {
-        for (let i = 0; i < loadedSpecs.length; i++) {
-          try {
-            await executeEval(loadedSpecs[i]!, ids[i]!, config, broadcast);
-          } catch (err) {
-            console.error(`Batch eval for ${loadedSpecs[i]!.name} failed:`, err);
-          }
-        }
-      })().catch((err) => {
-        console.error('Batch eval failed:', err);
-      });
+      res.json({ batchId: batchRun.id, ids });
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Unknown error';
       res.status(400).json({ error: message });
+    }
+  });
+
+  router.post('/suite/:name', async (req, res) => {
+    try {
+      const suite = await loadEvalSuite(req.params.name);
+      const { batchRun, ids } = await runBatch(suite.specs, config, broadcast, {
+        parallel: !!req.body.parallel,
+        suiteName: suite.name,
+        label: suite.name,
+      });
+      res.json({ batchId: batchRun.id, ids, suite: suite.name });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Unknown error';
+      const status = (err as NodeJS.ErrnoException).code === 'ENOENT' ? 404 : 400;
+      res.status(status).json({ error: message });
+    }
+  });
+
+  router.get('/batches', async (_req, res) => {
+    try {
+      const runs = await listBatchRuns();
+      res.json({ runs });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Unknown error';
+      res.status(500).json({ error: message });
+    }
+  });
+
+  router.get('/batches/:id', async (req, res) => {
+    try {
+      const run = await getBatchRun(req.params.id);
+      if (!run) {
+        res.status(404).json({ error: 'Batch run not found' });
+        return;
+      }
+      res.json(run);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Unknown error';
+      res.status(500).json({ error: message });
     }
   });
 

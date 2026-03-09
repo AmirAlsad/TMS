@@ -107,6 +107,8 @@ export interface WhatsAppEvalConfig {
     allowQuotedReplies?: boolean;
     allowVoiceNotes?: boolean;
     voiceNoteAssets?: string[];
+    allowMediaMessages?: boolean;
+    mediaAssets?: Array<{ ref: string; mediaType: string; mediaUrl: string }>;
   };
 }
 
@@ -127,6 +129,12 @@ export interface EvalSpec {
   whatsapp?: WhatsAppEvalConfig;
 }
 
+export interface EvalSuite {
+  name: string;
+  description: string;
+  specs: string[];
+}
+
 export interface EvalResult {
   id: string;
   specName: string;
@@ -138,6 +146,20 @@ export interface EvalResult {
   completedAt?: string;
   error?: string;
   tokenUsage?: TokenUsageSummary;
+  batchId?: string;
+}
+
+export type BatchRunStatus = 'running' | 'completed' | 'failed';
+
+export interface BatchRun {
+  id: string;
+  label: string;
+  suiteName?: string;
+  specNames: string[];
+  specIds: string[];
+  status: BatchRunStatus;
+  startedAt: string;
+  completedAt?: string;
 }
 
 export interface JudgeConfig {
@@ -206,6 +228,7 @@ export type UserBotAction =
   | { type: 'remove_reaction'; targetMessageId: string }
   | { type: 'reply_to_message'; targetMessageId: string; body: string; goalComplete?: boolean }
   | { type: 'send_voice_note'; audioRef: string }
+  | { type: 'send_media'; mediaType: string; mediaUrl: string; caption?: string; goalComplete?: boolean }
   | { type: 'wait' };
 
 // Union of all WhatsApp events for judge input
@@ -219,6 +242,8 @@ export type WsMessageType =
   | 'eval:started'
   | 'eval:status'
   | 'eval:result'
+  | 'batch:started'
+  | 'batch:completed'
   | 'whatsapp:reaction'
   | 'whatsapp:reaction_removed'
   | 'whatsapp:read_receipt'

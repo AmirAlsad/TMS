@@ -6,4 +6,7 @@ export { loadEvalSpec, listEvalSpecs } from './eval-spec-loader.js';
 export { saveEvalResult, getEvalResult, listEvalResults, generateEvalId } from './eval-results.js';
 export { UserBot } from './user-bot.js';
 export { registry, resolveModel } from './ai-registry.js';
+export { evaluateTranscript } from './evaluator.js';
 export { findProjectRoot } from './project-root.js';
+export { loadEvalSuite, listEvalSuites } from './suite-loader.js';
+export { generateBatchId, saveBatchRun, getBatchRun, listBatchRuns } from './batch-runs.js';

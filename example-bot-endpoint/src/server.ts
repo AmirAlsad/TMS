@@ -64,14 +64,24 @@ app.post('/chat', async (req, res) => {
   }
 
   // --- Regular message ---
-  const { message, messageId, quotedReply, callbackUrl } = req.body;
+  const { message, messageId, mediaType, mediaUrl, quotedReply, callbackUrl } = req.body;
 
-  if (!message || typeof message !== 'string') {
-    res.status(400).json({ error: 'Missing required field: message' });
+  // Allow media-only messages (no text body) on WhatsApp
+  const hasMedia = typeof mediaType === 'string' && typeof mediaUrl === 'string';
+  const hasMessage = message && typeof message === 'string';
+
+  if (!hasMessage && !hasMedia) {
+    res.status(400).json({ error: 'Missing required field: message (or media attachment)' });
     return;
   }
 
-  log('info', `Incoming message on [${ch}]`, { channel: ch, message });
+  const effectiveMessage = hasMessage ? message : '';
+
+  log('info', `Incoming message on [${ch}]`, {
+    channel: ch,
+    message: effectiveMessage,
+    ...(hasMedia ? { mediaType, mediaUrl } : {}),
+  });
 
   // Fire-and-forget typing indicator if callback URL is provided
   if (callbackUrl) {
@@ -83,7 +93,13 @@ app.post('/chat', async (req, res) => {
   }
 
   try {
-    const result = await chat(config, message, ch, { messageId, quotedReply, callbackUrl });
+    const result = await chat(config, effectiveMessage, ch, {
+      messageId,
+      quotedReply,
+      callbackUrl,
+      mediaType: hasMedia ? mediaType : undefined,
+      mediaUrl: hasMedia ? mediaUrl : undefined,
+    });
     log('info', `Bot responded on [${ch}]`, { channel: ch, response: result.text });
     res.json({
       response: result.text,
@@ -92,6 +108,7 @@ app.post('/chat', async (req, res) => {
       toolCalls: result.toolCalls,
       toolResults: result.toolResults,
       ...(result.structuredData ? { structuredData: result.structuredData } : {}),
+      ...(result.mediaType ? { mediaType: result.mediaType, mediaUrl: result.mediaUrl } : {}),
     });
   } catch (err) {
     const errorMessage = err instanceof Error ? err.message : 'Unknown error';

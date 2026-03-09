@@ -80,15 +80,34 @@ export const whatsAppEvalConfigSchema = z.object({
       allowQuotedReplies: z.boolean().optional(),
       allowVoiceNotes: z.boolean().optional(),
       voiceNoteAssets: z.array(z.string()).optional(),
+      allowMediaMessages: z.boolean().optional(),
+      mediaAssets: z
+        .array(
+          z.object({
+            ref: z.string(),
+            mediaType: z.string(),
+            mediaUrl: z.string().url(),
+          }),
+        )
+        .optional(),
     })
     .optional(),
 });
+
+const EMOJI_REGEX =
+  /^(\p{Emoji_Presentation}|\p{Emoji}\uFE0F)(\u200D(\p{Emoji_Presentation}|\p{Emoji}\uFE0F))*$/u;
+
+export const emojiSchema = z
+  .string()
+  .min(1)
+  .max(8)
+  .refine((val) => EMOJI_REGEX.test(val), { message: 'Must be a valid emoji' });
 
 export const whatsAppReactionSchema = z.object({
   type: z.enum(['reaction', 'reaction_removed']),
   fromUser: z.boolean(),
   targetMessageId: z.string(),
-  emoji: z.string(),
+  emoji: emojiSchema,
   timestamp: z.string(),
 });
 
@@ -113,7 +132,7 @@ export const userBotActionSchema = z.discriminatedUnion('type', [
   z.object({
     type: z.literal('react_to_message'),
     targetMessageId: z.string(),
-    emoji: z.string(),
+    emoji: emojiSchema,
   }),
   z.object({
     type: z.literal('remove_reaction'),
@@ -128,6 +147,13 @@ export const userBotActionSchema = z.discriminatedUnion('type', [
   z.object({
     type: z.literal('send_voice_note'),
     audioRef: z.string(),
+  }),
+  z.object({
+    type: z.literal('send_media'),
+    mediaType: z.string(),
+    mediaUrl: z.string(),
+    caption: z.string().optional(),
+    goalComplete: z.boolean().optional(),
   }),
   z.object({
     type: z.literal('wait'),
@@ -157,6 +183,12 @@ export const judgeConfigSchema = z.object({
   model: z.string(),
 });
 
+export const evalSuiteSchema = z.object({
+  name: z.string().min(1),
+  description: z.string(),
+  specs: z.array(z.string().min(1)).min(1),
+});
+
 export const evalResultSchema = z.object({
   id: z.string(),
   specName: z.string(),
@@ -174,6 +206,18 @@ export const evalResultSchema = z.object({
   completedAt: z.string().optional(),
   error: z.string().optional(),
   tokenUsage: tokenUsageSummarySchema.optional(),
+  batchId: z.string().optional(),
+});
+
+export const batchRunSchema = z.object({
+  id: z.string(),
+  label: z.string(),
+  suiteName: z.string().optional(),
+  specNames: z.array(z.string()),
+  specIds: z.array(z.string()),
+  status: z.enum(['running', 'completed', 'failed']),
+  startedAt: z.string(),
+  completedAt: z.string().optional(),
 });
 
 export const tmsConfigSchema = z.object({

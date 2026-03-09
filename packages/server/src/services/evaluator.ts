@@ -1,5 +1,12 @@
 import { generateText } from 'ai';
-import type { Message, TmsConfig, EvalRequirement, Classification, TokenUsage, WhatsAppEvent } from '@tms/shared';
+import type {
+  Message,
+  TmsConfig,
+  EvalRequirement,
+  Classification,
+  TokenUsage,
+  WhatsAppEvent,
+} from '@tms/shared';
 import { resolveModel } from './ai-registry.js';
 
 export interface JudgeInput {
@@ -38,11 +45,15 @@ function buildPrompt(input: JudgeInput): { system: string; user: string } {
       line = `[${m.role.toUpperCase()} ${m.mediaType}]: ${m.content || '(media)'}`;
     }
     if (m.toolCalls?.length) {
-      const calls = m.toolCalls.map((tc) => `  - ${tc.toolName}(${JSON.stringify(tc.input)})`).join('\n');
+      const calls = m.toolCalls
+        .map((tc) => `  - ${tc.toolName}(${JSON.stringify(tc.input)})`)
+        .join('\n');
       line += `\n[TOOL CALLS]:\n${calls}`;
     }
     if (m.toolResults?.length) {
-      const results = m.toolResults.map((tr) => `  - ${tr.toolName} → ${JSON.stringify(tr.result)}`).join('\n');
+      const results = m.toolResults
+        .map((tr) => `  - ${tr.toolName} → ${JSON.stringify(tr.result)}`)
+        .join('\n');
       line += `\n[TOOL RESULTS]:\n${results}`;
     }
     entries.push({ timestamp: m.timestamp, text: line });
@@ -53,7 +64,8 @@ function buildPrompt(input: JudgeInput): { system: string; user: string } {
     for (const event of input.events) {
       if (event.type === 'reaction' || event.type === 'reaction_removed') {
         const who = event.fromUser ? 'USER' : 'BOT';
-        const action = event.type === 'reaction' ? `reacted ${event.emoji} to` : 'removed reaction from';
+        const action =
+          event.type === 'reaction' ? `reacted ${event.emoji} to` : 'removed reaction from';
         entries.push({
           timestamp: event.timestamp,
           text: `[${who} ${action} message ${event.targetMessageId}]`,
@@ -70,9 +82,7 @@ function buildPrompt(input: JudgeInput): { system: string; user: string } {
   entries.sort((a, b) => a.timestamp.localeCompare(b.timestamp));
   const transcriptText = entries.map((e) => e.text).join('\n');
 
-  const requirementsList = input.requirements
-    .map((r, i) => `${i + 1}. ${r}`)
-    .join('\n');
+  const requirementsList = input.requirements.map((r, i) => `${i + 1}. ${r}`).join('\n');
 
   const system = `You are a QA judge evaluating a conversation between a user and a bot.
 You will be given a conversation transcript and a list of requirements.

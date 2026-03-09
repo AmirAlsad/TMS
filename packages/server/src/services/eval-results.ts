@@ -1,8 +1,9 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import type { EvalResult } from '@tms/shared';
+import { findProjectRoot } from './project-root.js';
 
-const RESULTS_DIR = path.resolve(process.cwd(), 'eval-results');
+const RESULTS_DIR = path.resolve(findProjectRoot(), 'eval-results');
 
 export function generateEvalId(): string {
   const now = new Date();

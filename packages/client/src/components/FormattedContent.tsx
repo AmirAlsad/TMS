@@ -40,16 +40,14 @@ export function FormattedContent({ content, channel, role }: FormattedContentPro
         {children}
       </a>
     ),
-    h1: ({ children }) => (
-      <p className="text-[15px] font-bold mt-2 leading-relaxed">{children}</p>
-    ),
+    h1: ({ children }) => <p className="text-[15px] font-bold mt-2 leading-relaxed">{children}</p>,
     h2: ({ children }) => (
       <p className="text-[14px] font-bold mt-1.5 leading-relaxed">{children}</p>
     ),
-    h3: ({ children }) => (
-      <p className="text-[13px] font-bold mt-1 leading-relaxed">{children}</p>
+    h3: ({ children }) => <p className="text-[13px] font-bold mt-1 leading-relaxed">{children}</p>,
+    ul: ({ children }) => (
+      <ul className="list-disc pl-4 text-[13px] leading-relaxed">{children}</ul>
     ),
-    ul: ({ children }) => <ul className="list-disc pl-4 text-[13px] leading-relaxed">{children}</ul>,
     ol: ({ children }) => (
       <ol className="list-decimal pl-4 text-[13px] leading-relaxed">{children}</ol>
     ),
@@ -88,9 +86,7 @@ export function FormattedContent({ content, channel, role }: FormattedContentPro
     th: ({ children }) => (
       <th className="border border-current/20 px-2 py-1 font-semibold text-left">{children}</th>
     ),
-    td: ({ children }) => (
-      <td className="border border-current/20 px-2 py-1">{children}</td>
-    ),
+    td: ({ children }) => <td className="border border-current/20 px-2 py-1">{children}</td>,
   };
 
   return (

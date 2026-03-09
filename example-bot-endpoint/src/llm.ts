@@ -1,10 +1,19 @@
-import { createProviderRegistry, generateText, stepCountIs, type ModelMessage } from 'ai';
+import {
+  createProviderRegistry,
+  generateText,
+  stepCountIs,
+  type ModelMessage,
+  type TextPart,
+  type ImagePart,
+} from 'ai';
 import { anthropic } from '@ai-sdk/anthropic';
 import { openai } from '@ai-sdk/openai';
 import type { BotConfig } from './config.js';
 import { log } from './logger.js';
 import { AppointmentStore } from './store.js';
 import { createTools, createReactionTool } from './tools.js';
+import { buildMediaContent } from './media-processor.js';
+import { createSendMediaTool, consumePendingMedia } from './media-tools.js';
 
 const registry = createProviderRegistry({ anthropic, openai });
 
@@ -24,6 +33,8 @@ export interface ChatOptions {
   messageId?: string;
   quotedReply?: { targetMessageId: string; quotedBody: string };
   callbackUrl?: string;
+  mediaType?: string;
+  mediaUrl?: string;
 }
 
 export function initLlm(_config: BotConfig): void {
@@ -52,6 +63,8 @@ export interface ChatResult {
   structuredData?: Record<string, unknown>;
   toolCalls: ToolCallInfo[];
   toolResults: ToolResultInfo[];
+  mediaType?: string;
+  mediaUrl?: string;
 }
 
 export async function chat(
@@ -62,23 +75,43 @@ export async function chat(
 ): Promise<ChatResult> {
   const channelHistory = history.get(channel) ?? [];
 
-  // Format user message with metadata for LLM context
-  const parts: string[] = [];
-  if (options?.messageId) {
-    parts.push(`[msg:${options.messageId}]`);
-  }
-  if (options?.quotedReply) {
-    parts.push(`[Replying to: "${options.quotedReply.quotedBody}"]`);
-  }
-  parts.push(message);
-  const formattedMessage = parts.join('\n');
+  // Build user content — multimodal when media is present
+  let userContent: string | Array<TextPart | ImagePart>;
 
-  channelHistory.push({ role: 'user', content: formattedMessage });
+  if (options?.mediaType && options?.mediaUrl) {
+    const metaParts: Array<TextPart | ImagePart> = [];
+    if (options.messageId) {
+      metaParts.push({ type: 'text', text: `[msg:${options.messageId}]` });
+    }
+    if (options.quotedReply) {
+      metaParts.push({
+        type: 'text',
+        text: `[Replying to: "${options.quotedReply.quotedBody}"]`,
+      });
+    }
+    const mediaContent = await buildMediaContent(options.mediaType, options.mediaUrl, message);
+    userContent = [...metaParts, ...mediaContent];
+  } else {
+    // Original string path — untouched
+    const parts: string[] = [];
+    if (options?.messageId) {
+      parts.push(`[msg:${options.messageId}]`);
+    }
+    if (options?.quotedReply) {
+      parts.push(`[Replying to: "${options.quotedReply.quotedBody}"]`);
+    }
+    parts.push(message);
+    userContent = parts.join('\n');
+  }
 
-  // Merge reaction tool when callbackUrl is available
-  const tools = options?.callbackUrl
-    ? { ...baseTools, ...createReactionTool(options.callbackUrl) }
-    : baseTools;
+  channelHistory.push({ role: 'user', content: userContent });
+
+  // Merge optional tools: reaction tool when callbackUrl is present, send_media for WhatsApp
+  const tools = {
+    ...baseTools,
+    ...(options?.callbackUrl ? createReactionTool(options.callbackUrl) : {}),
+    ...(options?.callbackUrl ? createSendMediaTool(channel) : {}),
+  };
 
   const isAnthropic = config.model.startsWith('anthropic:');
 
@@ -161,8 +194,15 @@ export async function chat(
     step.toolResults.map((tr) => ({ toolName: tr.toolName, result: tr.output })),
   );
 
+  // Check if the bot used send_media tool during this turn
+  const pendingMedia = consumePendingMedia(channel);
+
+  // If the bot used send_media with a caption but produced no text, use the caption as text
+  const responseText =
+    !text && pendingMedia?.caption ? pendingMedia.caption : text;
+
   return {
-    text,
+    text: responseText,
     usage: {
       promptTokens: result.usage.inputTokens ?? 0,
       completionTokens: result.usage.outputTokens ?? 0,
@@ -179,6 +219,7 @@ export async function chat(
     toolCalls,
     toolResults: toolResultInfos,
     ...(structuredData ? { structuredData } : {}),
+    ...(pendingMedia ? { mediaType: pendingMedia.mediaType, mediaUrl: pendingMedia.mediaUrl } : {}),
   };
 }
 

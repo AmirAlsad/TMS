@@ -6,10 +6,7 @@ import json from 'react-syntax-highlighter/dist/esm/languages/prism/json';
 import bash from 'react-syntax-highlighter/dist/esm/languages/prism/bash';
 import css from 'react-syntax-highlighter/dist/esm/languages/prism/css';
 import markup from 'react-syntax-highlighter/dist/esm/languages/prism/markup';
-import {
-  oneDark,
-  oneLight,
-} from 'react-syntax-highlighter/dist/esm/styles/prism';
+import { oneDark, oneLight } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import { useStore } from '../stores/store.js';
 
 SyntaxHighlighter.registerLanguage('javascript', javascript);

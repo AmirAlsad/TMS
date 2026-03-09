@@ -1,0 +1,35 @@
+name: whatsapp-media-audio
+description: >
+  Test that the bot gracefully handles a voice note by acknowledging
+  receipt and asking the user to send a text message instead, since
+  audio transcription is not yet implemented.
+channel: whatsapp
+
+userBot:
+  goal: >
+    Send a voice note to the bot. When the bot asks you to type your
+    message instead, send a text message asking to book a haircut
+    for next Friday. Your name is Jordan Lee.
+    After the bot starts helping with the booking, mark your goal
+    as complete.
+  persona: >
+    You're someone who prefers voice notes over typing. You're
+    understanding when told to type instead. Keep messages casual.
+
+requirements:
+  - The bot should acknowledge receiving the voice note
+  - The bot should politely ask the user to send a text message instead
+  - The bot should not claim to understand the audio content
+  - After receiving the text follow-up, the bot should proceed normally with the booking flow
+
+turnLimit: 10
+
+whatsapp:
+  readReceipts:
+    mode: on_response
+  userBot:
+    allowReactions: false
+    allowQuotedReplies: false
+    allowVoiceNotes: true
+    voiceNoteAssets:
+      - voice-booking-request

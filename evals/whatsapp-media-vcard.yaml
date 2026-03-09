@@ -1,0 +1,37 @@
+name: whatsapp-media-vcard
+description: >
+  Test that the bot can receive a vCard contact and reference the
+  contact details in its response. The user shares a doctor's contact
+  and asks for an appointment.
+channel: whatsapp
+
+userBot:
+  goal: >
+    Share the test contact card with the bot and ask to book an
+    appointment with that doctor. Your name is Jamie Rivera.
+    After the bot acknowledges the contact and responds with appointment
+    information, thank them and mark your goal as complete.
+  persona: >
+    You're practical and direct. You share contacts via WhatsApp
+    instead of typing out details manually. You're friendly but
+    get to the point quickly.
+
+requirements:
+  - The bot should acknowledge receiving the contact card
+  - The bot should reference the contact's name or details from the vCard
+  - The bot should respond helpfully to the appointment request
+  - The conversation should not crash or produce errors when a vCard is sent
+
+turnLimit: 8
+
+whatsapp:
+  readReceipts:
+    mode: on_response
+  userBot:
+    allowReactions: true
+    allowQuotedReplies: false
+    allowMediaMessages: true
+    mediaAssets:
+      - ref: test-contact
+        mediaType: text/vcard
+        mediaUrl: http://localhost:4000/api/eval-assets/test-contact.vcf

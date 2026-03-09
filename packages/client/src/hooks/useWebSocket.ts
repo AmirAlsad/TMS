@@ -4,6 +4,7 @@ import type {
   Message,
   LogEntry,
   EvalResult,
+  BatchRun,
   WhatsAppReaction,
   WhatsAppReadReceipt,
   WhatsAppTypingEvent,
@@ -23,6 +24,8 @@ export function useWebSocket() {
   const addLog = useStore((s) => s.addLog);
   const updateEvalStatus = useStore((s) => s.updateEvalStatus);
   const setEvalResult = useStore((s) => s.setEvalResult);
+  const startBatchRun = useStore((s) => s.startBatchRun);
+  const completeBatchRun = useStore((s) => s.completeBatchRun);
   const setReadState = useStore((s) => s.setReadState);
   const addReaction = useStore((s) => s.addReaction);
   const removeReaction = useStore((s) => s.removeReaction);
@@ -57,8 +60,17 @@ export function useWebSocket() {
           });
           break;
         }
+        case 'eval:started':
+          setEvalResult(msg.payload as EvalResult);
+          break;
         case 'eval:result':
           setEvalResult(msg.payload as EvalResult);
+          break;
+        case 'batch:started':
+          startBatchRun(msg.payload as BatchRun);
+          break;
+        case 'batch:completed':
+          completeBatchRun(msg.payload as BatchRun);
           break;
         case 'whatsapp:read_receipt': {
           const receipt = msg.payload as WhatsAppReadReceipt;
@@ -101,6 +113,8 @@ export function useWebSocket() {
     addLog,
     updateEvalStatus,
     setEvalResult,
+    startBatchRun,
+    completeBatchRun,
     setReadState,
     addReaction,
     removeReaction,

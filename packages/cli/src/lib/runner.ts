@@ -1,53 +1,24 @@
-import type {
-  TmsConfig,
-  EvalSpec,
-  EvalResult,
-  EvalRequirement,
-  Classification,
-  Message,
-} from '@tms/shared';
-import { runConversation, runHook, saveEvalResult, generateEvalId } from '@tms/server/services';
+import type { TmsConfig, EvalSpec, EvalResult, Classification, BatchRun } from '@tms/shared';
+import {
+  runConversation,
+  runHook,
+  saveEvalResult,
+  generateEvalId,
+  evaluateTranscript,
+  generateBatchId,
+  saveBatchRun,
+} from '@tms/server/services';
 import type { RunOptions, SpecResult, RunReport } from './types.js';
 
 function noopBroadcast() {
   // In headless mode, we don't broadcast to WebSocket clients
 }
 
-type EvaluateTranscriptFn = (
-  config: TmsConfig,
-  input: { transcript: Message[]; requirements: string[]; specName: string },
-) => Promise<{ requirements: EvalRequirement[]; classification: Classification }>;
-
-// Dynamic import for evaluator since it may not be implemented yet
-async function tryEvaluateTranscript(
-  config: TmsConfig,
-  input: { transcript: Message[]; requirements: string[]; specName: string },
-): Promise<{ requirements: EvalRequirement[]; classification: Classification }> {
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const evaluator = (await import('@tms/server/services')) as any;
-    const fn = evaluator.evaluateTranscript as EvaluateTranscriptFn | undefined;
-    if (typeof fn !== 'function') {
-      throw new Error('evaluateTranscript not yet implemented');
-    }
-    return fn(config, input);
-  } catch {
-    // Evaluator not implemented yet — mark as needs_review
-    return {
-      requirements: input.requirements.map((desc) => ({
-        description: desc,
-        classification: 'needs_review' as const,
-        reasoning: 'Evaluator not yet implemented',
-      })),
-      classification: 'needs_review',
-    };
-  }
-}
-
 async function runSingleSpec(
   spec: EvalSpec,
   specPath: string,
   config: TmsConfig,
+  batchId?: string,
 ): Promise<SpecResult> {
   const startTime = Date.now();
 
@@ -59,6 +30,7 @@ async function runSingleSpec(
     requirements: [],
     transcript: [],
     startedAt: new Date().toISOString(),
+    ...(batchId ? { batchId } : {}),
   };
 
   try {
@@ -75,10 +47,12 @@ async function runSingleSpec(
     }
 
     // Evaluate transcript
-    const evaluation = await tryEvaluateTranscript(config, {
+    const evaluation = await evaluateTranscript(config, {
       transcript: conversationResult.transcript,
       requirements: spec.requirements,
       specName: spec.name,
+      specDescription: spec.description,
+      events: conversationResult.events,
     });
 
     evalResult = {
@@ -106,6 +80,7 @@ async function runSingleSpec(
       error: errorMsg,
       completedAt: new Date().toISOString(),
     };
+    await saveEvalResult(evalResult);
   }
 
   return {
@@ -134,16 +109,40 @@ export async function runSpecs(
   const startTime = Date.now();
   let results: SpecResult[];
 
+  // Create a BatchRun record when running multiple specs
+  let batchRun: BatchRun | undefined;
+  if (specs.length > 1) {
+    const batchId = generateBatchId();
+    batchRun = {
+      id: batchId,
+      label: options.suite ?? 'CLI batch',
+      suiteName: options.suite,
+      specNames: specs.map(({ spec }) => spec.name),
+      specIds: specs.map(({ spec }) => `${generateEvalId()}_${spec.name}`),
+      status: 'running',
+      startedAt,
+    };
+    await saveBatchRun(batchRun);
+  }
+
   if (options.parallel && specs.length > 1) {
     results = await Promise.all(
-      specs.map(({ spec, specPath }) => runSingleSpec(spec, specPath, config)),
+      specs.map(({ spec, specPath }) => runSingleSpec(spec, specPath, config, batchRun?.id)),
     );
   } else {
     results = [];
     for (const { spec, specPath } of specs) {
-      const result = await runSingleSpec(spec, specPath, config);
+      const result = await runSingleSpec(spec, specPath, config, batchRun?.id);
       results.push(result);
     }
+  }
+
+  // Update BatchRun with actual spec IDs and completion status
+  if (batchRun) {
+    batchRun.specIds = results.map((r) => r.evalResult.id);
+    batchRun.status = 'completed';
+    batchRun.completedAt = new Date().toISOString();
+    await saveBatchRun(batchRun);
   }
 
   const summary = {

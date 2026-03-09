@@ -6,6 +6,7 @@ export interface RunOptions {
   verbose?: boolean;
   parallel?: boolean;
   config?: string;
+  suite?: string;
 }
 
 export interface SpecResult {

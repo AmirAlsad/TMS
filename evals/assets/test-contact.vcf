@@ -1,0 +1,9 @@
+BEGIN:VCARD
+VERSION:3.0
+FN:Dr. Sarah Miller
+TEL;TYPE=CELL:+1-555-0123
+EMAIL:sarah.miller@example.com
+ORG:Downtown Medical Center
+TITLE:Family Physician
+ADR;TYPE=WORK:;;456 Health Ave;Springfield;IL;62701;US
+END:VCARD

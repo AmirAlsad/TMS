@@ -1,0 +1,97 @@
+{
+  "id": "2026-03-09_07-22-13",
+  "specName": "whatsapp-media-audio",
+  "status": "completed",
+  "requirements": [
+    {
+      "description": "The bot should acknowledge receiving the voice note",
+      "classification": "passed",
+      "reasoning": "The bot explicitly acknowledged receiving the voice note with '**Voice note** 🎤 — I received your voice note...' in its first response."
+    },
+    {
+      "description": "The bot should politely ask the user to send a text message instead",
+      "classification": "passed",
+      "reasoning": "The bot politely asked the user to 'type out the details instead' and provided clear guidance on what information to include, maintaining a friendly and helpful tone."
+    },
+    {
+      "description": "The bot should not claim to understand the audio content",
+      "classification": "passed",
+      "reasoning": "The bot explicitly stated it is 'not able to process audio just yet,' making no claims about understanding or interpreting the content of the voice note."
+    },
+    {
+      "description": "After receiving the text follow-up, the bot should proceed normally with the booking flow",
+      "classification": "passed",
+      "reasoning": "Once the user typed their request as text, the bot smoothly transitioned into the booking flow, confirmed the service (haircut), clarified the date (2025-07-25), and asked about preferred time — all consistent with a normal booking process."
+    }
+  ],
+  "transcript": [
+    {
+      "id": "8ec95d7b-af2d-4e6b-8f61-f0ac9ac3520b",
+      "role": "user",
+      "content": "",
+      "channel": "whatsapp",
+      "timestamp": "2026-03-09T11:22:14.650Z",
+      "mediaType": "audio/ogg",
+      "mediaUrl": "voice-booking-request"
+    },
+    {
+      "id": "49eec2fa-dbfe-46ba-a492-e1bebb49bfa8",
+      "role": "bot",
+      "content": "Hey Casey! 👋\n\nA couple of things:\n\n1. **Voice note** 🎤 — I received your voice note, but unfortunately I'm not able to process audio just yet. Could you type out the details instead?\n\n2. **Document** 📄 — It seems the document didn't come through with any readable text. Could you re-send it, or just type out the appointment details directly?\n\nJust let me know:\n- **Service** (Haircut, Consultation, Dental Cleaning, or Massage)\n- **Preferred date & time**\n\nAnd I'll get you booked in no time! 😊",
+      "channel": "whatsapp",
+      "timestamp": "2026-03-09T11:22:19.246Z"
+    },
+    {
+      "id": "c7290e68-20d6-4d55-836d-4861b20913df",
+      "role": "user",
+      "content": "hey! can you book me a haircut for next Friday? my name's Jordan Lee 😊",
+      "channel": "whatsapp",
+      "timestamp": "2026-03-09T11:22:22.818Z"
+    },
+    {
+      "id": "bdb17f8f-912e-45e3-9124-57b80a0e6f62",
+      "role": "bot",
+      "content": "Hey Jordan! 😊 Happy to help with that haircut!\n\nJust to confirm — by \"next Friday\" do you mean **2025-07-25**? And do you have a preferred time in mind? Let me check what's available! 🕐",
+      "channel": "whatsapp",
+      "timestamp": "2026-03-09T11:22:24.607Z"
+    },
+    {
+      "id": "e2b56a7d-d1e9-44c2-a8f3-1bbbc7d602a8",
+      "role": "user",
+      "content": "yeah that's right! any time in the afternoon works for me 😊",
+      "channel": "whatsapp",
+      "timestamp": "2026-03-09T11:22:26.758Z"
+    }
+  ],
+  "startedAt": "2026-03-09T11:22:13.018Z",
+  "classification": "passed",
+  "completedAt": "2026-03-09T11:22:32.239Z",
+  "tokenUsage": {
+    "userBot": {
+      "promptTokens": 3768,
+      "completionTokens": 253,
+      "totalTokens": 4021
+    },
+    "judge": {
+      "promptTokens": 686,
+      "completionTokens": 326,
+      "totalTokens": 1012
+    },
+    "botEndpoint": {
+      "promptTokens": 6759,
+      "completionTokens": 207,
+      "totalTokens": 6966
+    },
+    "total": {
+      "promptTokens": 11213,
+      "completionTokens": 786,
+      "totalTokens": 11999
+    },
+    "botMetrics": {
+      "totalCost": 0.0101844,
+      "totalCachedTokens": 4888,
+      "totalUncachedTokens": 1871,
+      "averageLatencyMs": 3187
+    }
+  }
+}

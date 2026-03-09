@@ -1,0 +1,226 @@
+{
+  "id": "2026-03-09_07-26-28",
+  "specName": "whatsapp-media-audio",
+  "status": "completed",
+  "requirements": [
+    {
+      "description": "The bot should acknowledge receiving the voice note",
+      "classification": "passed",
+      "reasoning": "The bot explicitly states 'I received your voice note' in its first response, clearly acknowledging receipt of the audio message."
+    },
+    {
+      "description": "The bot should politely ask the user to send a text message instead",
+      "classification": "passed",
+      "reasoning": "The bot politely asks 'Could you please type out your message?' with a friendly tone and emoji, meeting this requirement."
+    },
+    {
+      "description": "The bot should not claim to understand the audio content",
+      "classification": "passed",
+      "reasoning": "The bot makes no claims about the audio content whatsoever. It only acknowledges receiving it and states it cannot process audio messages, without inferring or fabricating any content from the voice note."
+    },
+    {
+      "description": "After receiving the text follow-up, the bot should proceed normally with the booking flow",
+      "classification": "passed",
+      "reasoning": "After the user sends a text message requesting a haircut booking, the bot correctly uses the check_availability tool for July 25th, accurately presents the available time slots, and engages the user in selecting a time — demonstrating a normal, functional booking flow."
+    }
+  ],
+  "transcript": [
+    {
+      "id": "0fc30af9-4fb8-4b64-8a34-7907a4f9bcfc",
+      "role": "user",
+      "content": "",
+      "channel": "whatsapp",
+      "timestamp": "2026-03-09T11:26:30.606Z",
+      "mediaType": "audio/ogg",
+      "mediaUrl": "voice-booking-request"
+    },
+    {
+      "id": "60d3d20b-10be-4756-94c9-38dccbf66efb",
+      "role": "bot",
+      "content": "Hey there! 👋 I received your voice note, but unfortunately I'm not able to process audio messages just yet.\n\nCould you please type out your message? I'd be happy to help you with booking, rescheduling, or any questions about our services! 😊",
+      "channel": "whatsapp",
+      "timestamp": "2026-03-09T11:26:32.465Z"
+    },
+    {
+      "id": "5cc8f877-7a93-4fbb-9e8f-14c1b7787db6",
+      "role": "user",
+      "content": "no worries! could i book a haircut for next friday please? my name's Jordan Lee 😊",
+      "channel": "whatsapp",
+      "timestamp": "2026-03-09T11:26:34.974Z"
+    },
+    {
+      "id": "b1deeaf8-b685-4f5f-aff0-4229d343c252",
+      "role": "bot",
+      "content": "Great news, Jordan! 🎉 Next Friday (July 25th) has plenty of availability for a haircut. Here are the open slots:\n\n- 9:00 AM\n- 9:30 AM\n- 10:00 AM\n- 10:30 AM\n- 11:00 AM\n- 11:30 AM\n- 12:00 PM\n- 12:30 PM\n- 1:00 PM\n- 1:30 PM\n- 2:00 PM\n- 2:30 PM\n- 3:00 PM\n- 3:30 PM\n- 4:00 PM\n- 4:30 PM\n\nWhich time works best for you? ✂️",
+      "channel": "whatsapp",
+      "timestamp": "2026-03-09T11:26:43.083Z",
+      "toolCalls": [
+        {
+          "toolName": "react_to_message",
+          "input": {
+            "targetMessageId": "e27b77fe-632b-4884-bd14-cec94a0511dd",
+            "emoji": "👀"
+          }
+        },
+        {
+          "toolName": "check_availability",
+          "input": {
+            "date": "2025-07-25",
+            "serviceId": "haircut"
+          }
+        }
+      ],
+      "toolResults": [
+        {
+          "toolName": "react_to_message",
+          "result": {
+            "success": true,
+            "emoji": "👀",
+            "targetMessageId": "e27b77fe-632b-4884-bd14-cec94a0511dd"
+          }
+        },
+        {
+          "toolName": "check_availability",
+          "result": {
+            "date": "2025-07-25",
+            "availableSlots": [
+              {
+                "time": "09:00",
+                "endTime": "09:30"
+              },
+              {
+                "time": "09:30",
+                "endTime": "10:00"
+              },
+              {
+                "time": "10:00",
+                "endTime": "10:30"
+              },
+              {
+                "time": "10:30",
+                "endTime": "11:00"
+              },
+              {
+                "time": "11:00",
+                "endTime": "11:30"
+              },
+              {
+                "time": "11:30",
+                "endTime": "12:00"
+              },
+              {
+                "time": "12:00",
+                "endTime": "12:30"
+              },
+              {
+                "time": "12:30",
+                "endTime": "13:00"
+              },
+              {
+                "time": "13:00",
+                "endTime": "13:30"
+              },
+              {
+                "time": "13:30",
+                "endTime": "14:00"
+              },
+              {
+                "time": "14:00",
+                "endTime": "14:30"
+              },
+              {
+                "time": "14:30",
+                "endTime": "15:00"
+              },
+              {
+                "time": "15:00",
+                "endTime": "15:30"
+              },
+              {
+                "time": "15:30",
+                "endTime": "16:00"
+              },
+              {
+                "time": "16:00",
+                "endTime": "16:30"
+              },
+              {
+                "time": "16:30",
+                "endTime": "17:00"
+              }
+            ],
+            "businessHours": {
+              "dayOfWeek": 5,
+              "open": "09:00",
+              "close": "17:00"
+            },
+            "services": [
+              {
+                "id": "haircut",
+                "name": "Haircut",
+                "durationMinutes": 30,
+                "price": 35
+              },
+              {
+                "id": "consultation",
+                "name": "Consultation",
+                "durationMinutes": 60,
+                "price": 75
+              },
+              {
+                "id": "dental-cleaning",
+                "name": "Dental Cleaning",
+                "durationMinutes": 45,
+                "price": 120
+              },
+              {
+                "id": "massage",
+                "name": "Massage",
+                "durationMinutes": 60,
+                "price": 90
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "dfeba580-e32f-4954-a2e0-bd108b40379b",
+      "role": "user",
+      "content": "Oh nice, loads of options! Let's go with 11am 😄",
+      "channel": "whatsapp",
+      "timestamp": "2026-03-09T11:26:45.311Z"
+    }
+  ],
+  "startedAt": "2026-03-09T11:26:28.778Z",
+  "classification": "passed",
+  "completedAt": "2026-03-09T11:26:50.667Z",
+  "tokenUsage": {
+    "userBot": {
+      "promptTokens": 3719,
+      "completionTokens": 266,
+      "totalTokens": 3985
+    },
+    "judge": {
+      "promptTokens": 1216,
+      "completionTokens": 323,
+      "totalTokens": 1539
+    },
+    "botEndpoint": {
+      "promptTokens": 6533,
+      "completionTokens": 239,
+      "totalTokens": 6772
+    },
+    "total": {
+      "promptTokens": 11468,
+      "completionTokens": 828,
+      "totalTokens": 12296
+    },
+    "botMetrics": {
+      "totalCost": 0.0099864,
+      "totalCachedTokens": 4888,
+      "totalUncachedTokens": 1645,
+      "averageLatencyMs": 4672
+    }
+  }
+}

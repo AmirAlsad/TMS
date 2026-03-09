@@ -1,0 +1,36 @@
+name: whatsapp-media-document
+description: >
+  Test that the bot can receive a PDF document and extract its text
+  content to inform its response. The user sends an appointment
+  confirmation PDF and asks about it.
+channel: whatsapp
+
+userBot:
+  goal: >
+    Send the test PDF document to the bot and ask about the appointment
+    details in the document. Your name is Casey Morgan.
+    After the bot references the document content and responds,
+    thank them and mark your goal as complete.
+  persona: >
+    You're organized and like to share documents for reference.
+    You keep messages concise and expect detailed responses.
+
+requirements:
+  - The bot should acknowledge receiving the PDF document
+  - The bot should reference or use the text content extracted from the PDF
+  - The bot should respond helpfully based on the document content
+  - The conversation should not crash or produce errors when a PDF is sent
+
+turnLimit: 8
+
+whatsapp:
+  readReceipts:
+    mode: on_response
+  userBot:
+    allowReactions: false
+    allowQuotedReplies: false
+    allowMediaMessages: true
+    mediaAssets:
+      - ref: test-document
+        mediaType: application/pdf
+        mediaUrl: http://localhost:4000/api/eval-assets/test-document.pdf

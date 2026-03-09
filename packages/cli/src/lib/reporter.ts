@@ -39,9 +39,7 @@ export function printSummaryTable(results: SpecResult[]): void {
       ? classificationLabel(evalResult.classification)
       : chalk.dim('N/A');
     const reqTotal = evalResult.requirements.length;
-    const reqPassed = evalResult.requirements.filter(
-      (r) => r.classification === 'passed',
-    ).length;
+    const reqPassed = evalResult.requirements.filter((r) => r.classification === 'passed').length;
     const duration = chalk.dim(formatDuration(durationMs));
 
     console.log(`  ${name}  ${classification}  ${reqPassed}/${reqTotal} requirements  ${duration}`);
@@ -62,9 +60,7 @@ export function printSummary(report: RunReport): void {
   console.log();
 
   const overallColor = classificationColor(report.overallClassification);
-  console.log(
-    `  Overall: ${overallColor(report.overallClassification.toUpperCase())}`,
-  );
+  console.log(`  Overall: ${overallColor(report.overallClassification.toUpperCase())}`);
   console.log();
 }
 
@@ -81,7 +77,12 @@ export function printDetailedResult(result: SpecResult): void {
     console.log();
     console.log(chalk.bold('  Requirements:'));
     for (const req of evalResult.requirements) {
-      const icon = req.classification === 'passed' ? chalk.green('PASS') : req.classification === 'failed' ? chalk.red('FAIL') : chalk.yellow('REVIEW');
+      const icon =
+        req.classification === 'passed'
+          ? chalk.green('PASS')
+          : req.classification === 'failed'
+            ? chalk.red('FAIL')
+            : chalk.yellow('REVIEW');
       console.log(`    [${icon}] ${req.description}`);
       if (req.reasoning) {
         console.log(chalk.dim(`           ${req.reasoning}`));

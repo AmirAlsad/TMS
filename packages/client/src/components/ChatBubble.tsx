@@ -4,6 +4,7 @@ import { FormattedContent } from './FormattedContent.js';
 import { ReactionPicker } from './ReactionPicker.js';
 import { ReactionBadges } from './ReactionBadges.js';
 import { QuotedReplyBlock } from './QuotedReplyBlock.js';
+import { MediaContent } from './MediaContent.js';
 import { useStore } from '../stores/store.js';
 
 interface ChatBubbleProps {
@@ -13,7 +14,11 @@ interface ChatBubbleProps {
 function CheckMarks({ status }: { status: ReadStatus }) {
   if (status === 'sent') {
     return (
-      <svg className="inline-block ml-1 w-4 h-3 text-slate-400 dark:text-slate-500" viewBox="0 0 16 12" fill="none">
+      <svg
+        className="inline-block ml-1 w-4 h-3 text-slate-400 dark:text-slate-500"
+        viewBox="0 0 16 12"
+        fill="none"
+      >
         <path
           d="M1 6l3 3L11 1"
           stroke="currentColor"
@@ -71,6 +76,9 @@ export function ChatBubble({ message }: ChatBubbleProps) {
     minute: '2-digit',
   });
 
+  const hasMedia = !!message.mediaType && !!message.mediaUrl;
+  const isSticker = isWhatsApp && message.mediaType === 'image/webp';
+
   const handleReactionSelect = async (emoji: string) => {
     setShowPicker(false);
     addReaction(message.id, emoji, true);
@@ -122,7 +130,8 @@ export function ChatBubble({ message }: ChatBubbleProps) {
     }
   };
 
-  const showManualRead = isWhatsApp && !isUser && readReceiptMode === 'manual' && readState !== 'read';
+  const showManualRead =
+    isWhatsApp && !isUser && readReceiptMode === 'manual' && readState !== 'read';
 
   if (isWhatsApp) {
     const bubbleStyles = isUser
@@ -139,12 +148,13 @@ export function ChatBubble({ message }: ChatBubbleProps) {
         onMouseEnter={() => setHovered(true)}
         onMouseLeave={() => {
           setHovered(false);
-          setShowPicker(false);
         }}
       >
-        <div className={`relative max-w-[75%] px-3 py-1.5 rounded-lg shadow-sm ${bubbleStyles}`}>
+        <div
+          className={`relative max-w-[75%] ${isSticker ? '' : `px-3 py-1.5 rounded-lg shadow-sm ${bubbleStyles}`}`}
+        >
           {/* Hover actions */}
-          {hovered && (
+          {(hovered || showPicker) && (
             <div
               className={`absolute top-1 z-20 flex gap-0.5 ${isUser ? 'left-0 -translate-x-full pr-1' : 'right-0 translate-x-full pl-1'}`}
             >
@@ -156,8 +166,18 @@ export function ChatBubble({ message }: ChatBubbleProps) {
                            dark:hover:text-slate-200 transition-colors text-xs"
                 title="React"
               >
-                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M15.182 15.182a4.5 4.5 0 0 1-6.364 0M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0ZM9.75 9.75c0 .414-.168.75-.375.75S9 10.164 9 9.75 9.168 9 9.375 9s.375.336.375.75Zm-.375 0h.008v.015h-.008V9.75Zm5.625 0c0 .414-.168.75-.375.75s-.375-.336-.375-.75.168-.75.375-.75.375.336.375.75Zm-.375 0h.008v.015h-.008V9.75Z" />
+                <svg
+                  className="w-3.5 h-3.5"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  strokeWidth={1.5}
+                  stroke="currentColor"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M15.182 15.182a4.5 4.5 0 0 1-6.364 0M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0ZM9.75 9.75c0 .414-.168.75-.375.75S9 10.164 9 9.75 9.168 9 9.375 9s.375.336.375.75Zm-.375 0h.008v.015h-.008V9.75Zm5.625 0c0 .414-.168.75-.375.75s-.375-.336-.375-.75.168-.75.375-.75.375.336.375.75Zm-.375 0h.008v.015h-.008V9.75Z"
+                  />
                 </svg>
               </button>
               <button
@@ -168,8 +188,18 @@ export function ChatBubble({ message }: ChatBubbleProps) {
                            dark:hover:text-slate-200 transition-colors text-xs"
                 title="Reply"
               >
-                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 15 3 9m0 0 6-6M3 9h12a6 6 0 0 1 0 12h-3" />
+                <svg
+                  className="w-3.5 h-3.5"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  strokeWidth={1.5}
+                  stroke="currentColor"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M9 15 3 9m0 0 6-6M3 9h12a6 6 0 0 1 0 12h-3"
+                  />
                 </svg>
               </button>
             </div>
@@ -177,24 +207,51 @@ export function ChatBubble({ message }: ChatBubbleProps) {
 
           {/* Reaction picker */}
           {showPicker && (
-            <div className={`absolute z-30 ${isUser ? 'right-0' : 'left-0'}`} style={{ bottom: '100%' }}>
-              <ReactionPicker onSelect={handleReactionSelect} onClose={() => setShowPicker(false)} />
+            <div
+              className={`absolute z-30 ${isUser ? 'right-0' : 'left-0'}`}
+              style={{ bottom: '100%' }}
+            >
+              <ReactionPicker
+                onSelect={handleReactionSelect}
+                onClose={() => setShowPicker(false)}
+                align={isUser ? 'right' : 'left'}
+              />
             </div>
           )}
 
           {/* Quoted reply */}
           {message.quotedReply && (
-            <QuotedReplyBlock role={quotedOriginalRole ?? (isUser ? 'bot' : 'user')} content={message.quotedReply.quotedBody} />
+            <QuotedReplyBlock
+              role={quotedOriginalRole ?? (isUser ? 'bot' : 'user')}
+              content={message.quotedReply.quotedBody}
+            />
           )}
 
-          <FormattedContent content={message.content} channel={message.channel} role={message.role} />
+          {/* Media */}
+          {hasMedia && (
+            <MediaContent
+              mediaType={message.mediaType!}
+              mediaUrl={message.mediaUrl!}
+              channel={message.channel}
+            />
+          )}
+
+          {message.content && (
+            <FormattedContent
+              content={message.content}
+              channel={message.channel}
+              role={message.role}
+            />
+          )}
 
           {/* Reaction badges */}
           {reactions.length > 0 && (
             <ReactionBadges reactions={reactions} onRemove={handleReactionRemove} />
           )}
 
-          <p className={`text-[10px] mt-0.5 text-right flex items-center justify-end gap-1 ${timeStyles}`}>
+          <p
+            className={`text-[10px] mt-0.5 text-right flex items-center justify-end gap-1 ${timeStyles}`}
+          >
             {time}
             {isUser && <CheckMarks status="delivered" />}
             {!isUser && <CheckMarks status={readState} />}
@@ -223,7 +280,20 @@ export function ChatBubble({ message }: ChatBubbleProps) {
   return (
     <div className={`flex ${isUser ? 'justify-end' : 'justify-start'} animate-slide-up`}>
       <div className={`max-w-[75%] px-3.5 py-2 rounded-2xl ${bubbleStyles}`}>
-        <FormattedContent content={message.content} channel={message.channel} role={message.role} />
+        {hasMedia && (
+          <MediaContent
+            mediaType={message.mediaType!}
+            mediaUrl={message.mediaUrl!}
+            channel={message.channel}
+          />
+        )}
+        {message.content && (
+          <FormattedContent
+            content={message.content}
+            channel={message.channel}
+            role={message.role}
+          />
+        )}
         <p
           className={`text-[10px] mt-0.5 ${isUser ? 'text-indigo-200' : 'text-slate-400 dark:text-slate-500'}`}
         >

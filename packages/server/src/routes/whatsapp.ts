@@ -42,6 +42,10 @@ export function createWhatsAppRouter(
               channel: 'whatsapp',
               timestamp: new Date().toISOString(),
             };
+            if (botResult.mediaType) {
+              botMessage.mediaType = botResult.mediaType;
+              botMessage.mediaUrl = botResult.mediaUrl;
+            }
             broadcast({ type: 'bot:message', payload: botMessage });
             readReceiptService.trackMessage(botMessage);
           }
@@ -85,6 +89,10 @@ export function createWhatsAppRouter(
               channel: 'whatsapp',
               timestamp: new Date().toISOString(),
             };
+            if (botResult.mediaType) {
+              botMessage.mediaType = botResult.mediaType;
+              botMessage.mediaUrl = botResult.mediaUrl;
+            }
             broadcast({ type: 'bot:message', payload: botMessage });
             readReceiptService.trackMessage(botMessage);
           }

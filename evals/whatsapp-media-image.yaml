@@ -1,0 +1,35 @@
+name: whatsapp-media-image
+description: >
+  Test that the bot can receive and acknowledge an image sent by the user.
+  The user sends a photo and asks for help related to the image content.
+channel: whatsapp
+
+userBot:
+  goal: >
+    Send the test image to the bot and ask if they can help you book
+    an appointment based on what they see. Your name is Alex Thompson.
+    After the bot acknowledges the image and responds, thank them and
+    mark your goal as complete.
+  persona: >
+    You're a casual WhatsApp user. You prefer sending photos over
+    typing long messages. Keep your messages short and friendly.
+
+requirements:
+  - The bot should acknowledge receiving the image
+  - The bot should attempt to describe or reference the image content
+  - The bot should continue the conversation naturally after receiving the media
+  - The conversation should not crash or produce errors when media is sent
+
+turnLimit: 8
+
+whatsapp:
+  readReceipts:
+    mode: on_response
+  userBot:
+    allowReactions: true
+    allowQuotedReplies: false
+    allowMediaMessages: true
+    mediaAssets:
+      - ref: test-image
+        mediaType: image/png
+        mediaUrl: http://localhost:4000/api/eval-assets/test-image.png

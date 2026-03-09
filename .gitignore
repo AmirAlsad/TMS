@@ -8,3 +8,21 @@ dist/
 coverage/
 .DS_Store
 *.log
+
+# Runtime logs and debug traces
+logs/
+*.log.*
+*.pid
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Evaluation outputs
+eval-results/
+
+# Local caches and temp artifacts
+.cache/
+.turbo/
+tmp/
+temp/

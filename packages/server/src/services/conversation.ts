@@ -139,6 +139,18 @@ function dispatchAction(
       return { message: msg, goalComplete: false };
     }
 
+    case 'send_media': {
+      if (isWhatsApp) emitTyping(broadcast, true, true);
+      const msg = createMessage('user', action.caption ?? '', evalSpec.channel, {
+        mediaType: action.mediaType,
+        mediaUrl: action.mediaUrl,
+      });
+      transcript.push(msg);
+      broadcast({ type: 'user:message', payload: msg });
+      if (isWhatsApp) emitTyping(broadcast, true, false);
+      return { message: msg, goalComplete: action.goalComplete ?? false };
+    }
+
     case 'wait': {
       return { message: null, goalComplete: false };
     }
@@ -248,6 +260,10 @@ export async function runConversation(
         const botMessage = createMessage('bot', botResult.text, evalSpec.channel);
         if (botResult.toolCalls?.length) botMessage.toolCalls = botResult.toolCalls;
         if (botResult.toolResults?.length) botMessage.toolResults = botResult.toolResults;
+        if (botResult.mediaType) {
+          botMessage.mediaType = botResult.mediaType;
+          botMessage.mediaUrl = botResult.mediaUrl;
+        }
         transcript.push(botMessage);
         broadcast({ type: 'bot:message', payload: botMessage });
 

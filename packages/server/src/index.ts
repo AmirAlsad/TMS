@@ -9,8 +9,16 @@ dotenv.config({ path: `${findProjectRoot()}/.env` });
 const config = loadConfig();
 const port = config.server?.port ?? DEFAULT_PORT;
 
-const { server } = createServer(config);
+const { server, cleanupMediaDir } = createServer(config);
 
 server.listen(port, () => {
   console.log(`TMS server running on http://localhost:${port}`);
 });
+
+function shutdown() {
+  cleanupMediaDir();
+  process.exit(0);
+}
+
+process.on('SIGINT', shutdown);
+process.on('SIGTERM', shutdown);

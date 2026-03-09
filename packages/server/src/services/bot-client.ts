@@ -14,6 +14,8 @@ export interface BotResponse {
   metrics?: BotEndpointMetrics;
   toolCalls?: ToolCallInfo[];
   toolResults?: ToolResultInfo[];
+  mediaType?: string;
+  mediaUrl?: string;
 }
 
 function extractUsage(data: unknown): TokenUsage | undefined {
@@ -112,7 +114,7 @@ export async function sendToBot(
   } else if (typeof data.text === 'string') {
     text = data.text;
   } else {
-    throw new Error('Could not extract message from bot response');
+    text = '';
   }
 
   const toolCalls = Array.isArray(data.toolCalls) ? (data.toolCalls as ToolCallInfo[]) : undefined;
@@ -120,12 +122,21 @@ export async function sendToBot(
     ? (data.toolResults as ToolResultInfo[])
     : undefined;
 
+  const mediaType = typeof data.mediaType === 'string' ? data.mediaType : undefined;
+  const mediaUrl = typeof data.mediaUrl === 'string' ? data.mediaUrl : undefined;
+
+  if (!text && !mediaUrl) {
+    throw new Error('Could not extract message from bot response');
+  }
+
   return {
     text,
     usage: extractUsage(data),
     metrics: extractMetrics(data),
     toolCalls,
     toolResults,
+    mediaType,
+    mediaUrl,
   };
 }
 
@@ -198,19 +209,26 @@ export async function sendReactionCallback(
     else if (typeof data.content === 'string') text = data.content;
     else if (typeof data.text === 'string') text = data.text;
 
-    if (!text) return null;
+    const mediaType = typeof data.mediaType === 'string' ? data.mediaType : undefined;
+    const mediaUrl = typeof data.mediaUrl === 'string' ? data.mediaUrl : undefined;
 
-    const toolCalls = Array.isArray(data.toolCalls) ? (data.toolCalls as ToolCallInfo[]) : undefined;
+    if (!text && !mediaUrl) return null;
+
+    const toolCalls = Array.isArray(data.toolCalls)
+      ? (data.toolCalls as ToolCallInfo[])
+      : undefined;
     const toolResults = Array.isArray(data.toolResults)
       ? (data.toolResults as ToolResultInfo[])
       : undefined;
 
     return {
-      text,
+      text: text ?? '',
       usage: extractUsage(data),
       metrics: extractMetrics(data),
       toolCalls,
       toolResults,
+      mediaType,
+      mediaUrl,
     };
   } catch {
     return null;

@@ -1,0 +1,8 @@
+name: regression
+description: Core appointment flow regression suite
+specs:
+  - cancel-appointment
+  - reschedule-appointment
+  - unavailable-time
+  - service-inquiry
+  - conflicting-slot

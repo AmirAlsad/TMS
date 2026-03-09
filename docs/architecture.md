@@ -38,7 +38,7 @@ The type contract for the entire system. All TypeScript interfaces, Zod validati
 
 - `src/types.ts` -- All TypeScript interfaces (`Message`, `EvalSpec`, `EvalResult`, `TmsConfig`, `WsMessage`, `UserBotAction`, `WhatsAppEvent`, etc.)
 - `src/schemas.ts` -- Zod schemas that mirror the type definitions, used for runtime validation at API boundaries
-- `src/constants.ts` -- Shared constants (`DEFAULT_PORT`, `CHANNELS`, `DEFAULT_TURN_LIMIT`)
+- `src/constants.ts` -- Shared constants (`DEFAULT_PORT`, `CHANNELS`, `DEFAULT_TURN_LIMIT`), media type map (`MEDIA_TYPE_MAP`), and media helper utilities
 - `src/index.ts` -- Re-exports everything from the above files
 
 Built with tsup, exports ESM only. **Must be built before other packages can import it** (`pnpm --filter @tms/shared build`).
@@ -65,7 +65,11 @@ export function createServer(config: TmsConfig) {
   app.use('/api/logs', createLogsRouter(broadcast));
   app.use('/api/eval', createEvalRouter(config, broadcast));
   app.use('/api/config', createConfigRouter(config));
+  app.use('/api/media', createMediaRouter());
   app.use('/api/whatsapp', createWhatsAppRouter(config, broadcast, readReceiptService));
+
+  // Clean up uploaded media files on shutdown
+  cleanupMediaDir();
 
   return { app, server, wss };
 }
@@ -99,7 +103,7 @@ Commander.js CLI with two commands:
 The core interaction loop when a user types a message in the browser:
 
 ```
-1. Client POSTs { content, channel, quotedReply? } to /api/message
+1. Client POSTs { content, channel, quotedReply?, mediaType?, mediaUrl? } to /api/message
 2. Server creates a Message object with crypto.randomUUID() id
 3. Server broadcasts { type: 'user:message', payload: message } via WebSocket
 4. Server calls sendToBot() -- HTTP POST to the configured bot endpoint
@@ -260,6 +264,8 @@ All routes use the factory pattern -- each file exports a `create*Router(config,
 | `/api/eval` | GET | `createEvalRouter` | List all eval results |
 | `/api/config` | GET | `createConfigRouter` | Get current config |
 | `/api/config` | PUT | `createConfigRouter` | Update config at runtime |
+| `/api/media` | POST | `createMediaRouter` | Upload a media file (WhatsApp) |
+| `/api/media/:filename` | GET | `createMediaRouter` | Serve an uploaded media file |
 | `/api/whatsapp/reaction` | POST | `createWhatsAppRouter` | Add a reaction |
 | `/api/whatsapp/reaction/remove` | POST | `createWhatsAppRouter` | Remove a reaction |
 | `/api/whatsapp/read` | POST | `createWhatsAppRouter` | Manually mark messages as read |

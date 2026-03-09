@@ -5,10 +5,59 @@ import { ChatBubble } from './ChatBubble';
 import { ChannelHeader } from './ChannelHeader';
 import { QuotedReplyPreview } from './QuotedReplyPreview';
 import { TypingIndicator } from './TypingIndicator';
+import { MAX_MEDIA_SIZE, getMediaCategory } from '@tms/shared';
 
 interface MessagePanelProps {
   readOnly?: boolean;
 }
+
+/** WhatsApp-style attachment menu items */
+const ATTACHMENT_OPTIONS = [
+  {
+    label: 'Photos & Videos',
+    accept: 'image/jpeg,image/png,image/webp,video/mp4',
+    icon: (
+      <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" d="m2.25 15.75 5.159-5.159a2.25 2.25 0 0 1 3.182 0l5.159 5.159m-1.5-1.5 1.409-1.409a2.25 2.25 0 0 1 3.182 0l2.909 2.909M3.75 21h16.5A2.25 2.25 0 0 0 22.5 18.75V5.25A2.25 2.25 0 0 0 20.25 3H3.75A2.25 2.25 0 0 0 1.5 5.25v13.5A2.25 2.25 0 0 0 3.75 21Zm16.5-13.5h.008v.008h-.008V7.5Zm0 0L12 15" />
+      </svg>
+    ),
+    color: 'text-violet-500',
+    bg: 'bg-violet-100 dark:bg-violet-900/40',
+  },
+  {
+    label: 'Document',
+    accept: 'application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.presentationml.presentation,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    icon: (
+      <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" />
+      </svg>
+    ),
+    color: 'text-blue-500',
+    bg: 'bg-blue-100 dark:bg-blue-900/40',
+  },
+  {
+    label: 'Audio',
+    accept: 'audio/ogg,audio/amr,audio/3gpp,audio/aac,audio/mpeg',
+    icon: (
+      <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" d="M19.114 5.636a9 9 0 0 1 0 12.728M16.463 8.288a5.25 5.25 0 0 1 0 7.424M6.75 8.25l4.72-4.72a.75.75 0 0 1 1.28.53v15.88a.75.75 0 0 1-1.28.53l-4.72-4.72H4.51c-.88 0-1.704-.507-1.938-1.354A9.009 9.009 0 0 1 2.25 12c0-.83.112-1.633.322-2.396C2.806 8.756 3.63 8.25 4.51 8.25H6.75Z" />
+      </svg>
+    ),
+    color: 'text-orange-500',
+    bg: 'bg-orange-100 dark:bg-orange-900/40',
+  },
+  {
+    label: 'Contact',
+    accept: 'text/vcard,text/x-vcard',
+    icon: (
+      <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0ZM4.501 20.118a7.5 7.5 0 0 1 14.998 0A17.933 17.933 0 0 1 12 21.75c-2.676 0-5.216-.584-7.499-1.632Z" />
+      </svg>
+    ),
+    color: 'text-teal-500',
+    bg: 'bg-teal-100 dark:bg-teal-900/40',
+  },
+] as const;
 
 export function MessagePanel({ readOnly = false }: MessagePanelProps) {
   const messages = useStore(useShallow((s) => s.messages.filter((m) => m.channel === s.channel)));
@@ -18,30 +67,147 @@ export function MessagePanel({ readOnly = false }: MessagePanelProps) {
   const typingIndicator = useStore((s) => s.typingIndicator);
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
+  const [attachment, setAttachment] = useState<{
+    file: File;
+    previewUrl: string;
+    mediaType: string;
+  } | null>(null);
+  const [attachMenuOpen, setAttachMenuOpen] = useState(false);
+  const [fileError, setFileError] = useState<string | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [fileAccept, setFileAccept] = useState('');
+  const attachMenuRef = useRef<HTMLDivElement>(null);
+
+  const isWhatsApp = channel === 'whatsapp';
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, typingIndicator]);
 
+  // Cleanup object URL when attachment changes
+  useEffect(() => {
+    return () => {
+      if (attachment?.previewUrl) {
+        URL.revokeObjectURL(attachment.previewUrl);
+      }
+    };
+  }, [attachment]);
+
+  // Close attach menu when clicking outside
+  useEffect(() => {
+    if (!attachMenuOpen) return;
+    const handleClick = (e: MouseEvent) => {
+      if (attachMenuRef.current && !attachMenuRef.current.contains(e.target as Node)) {
+        setAttachMenuOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, [attachMenuOpen]);
+
+  // Auto-dismiss file error after 4 seconds
+  useEffect(() => {
+    if (!fileError) return;
+    const timer = setTimeout(() => setFileError(null), 4000);
+    return () => clearTimeout(timer);
+  }, [fileError]);
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Reset file input so the same file can be re-selected
+    e.target.value = '';
+
+    if (file.size > MAX_MEDIA_SIZE) {
+      setFileError(`File is too large (${(file.size / (1024 * 1024)).toFixed(1)} MB). Maximum size is 16 MB.`);
+      return;
+    }
+
+    const category = getMediaCategory(file.type, channel);
+    if (!category) {
+      setFileError(`Unsupported file type: ${file.type || 'unknown'}`);
+      return;
+    }
+
+    // Revoke previous preview URL if any
+    if (attachment?.previewUrl) {
+      URL.revokeObjectURL(attachment.previewUrl);
+    }
+
+    setFileError(null);
+    setAttachment({
+      file,
+      previewUrl: URL.createObjectURL(file),
+      mediaType: file.type,
+    });
+  };
+
+  const openFilePicker = (accept: string) => {
+    setFileAccept(accept);
+    setAttachMenuOpen(false);
+    // Need a tick for the accept attr to update before triggering the click
+    setTimeout(() => fileInputRef.current?.click(), 0);
+  };
+
+  const removeAttachment = () => {
+    if (attachment?.previewUrl) {
+      URL.revokeObjectURL(attachment.previewUrl);
+    }
+    setAttachment(null);
+  };
+
   const sendMessage = async () => {
     const content = input.trim();
-    if (!content || sending) return;
+    if ((!content && !attachment) || sending) return;
 
     setSending(true);
     setInput('');
 
-    const body: Record<string, unknown> = { content, channel };
-    if (replyingTo && channel === 'whatsapp') {
-      body.quotedReply = {
-        targetMessageId: replyingTo.id,
-        quotedBody: replyingTo.content,
-      };
-    }
-
-    setReplyingTo(null);
-
     try {
+      let mediaUrl: string | undefined;
+      let mediaType: string | undefined;
+
+      // Upload attachment first if present
+      if (attachment) {
+        const formData = new FormData();
+        formData.append('file', attachment.file);
+
+        const uploadRes = await fetch('/api/media', {
+          method: 'POST',
+          body: formData,
+        });
+
+        if (!uploadRes.ok) {
+          throw new Error('Failed to upload media');
+        }
+
+        const uploadData = await uploadRes.json();
+        mediaUrl = uploadData.mediaUrl;
+        mediaType = uploadData.mediaType;
+
+        // Revoke the preview URL
+        URL.revokeObjectURL(attachment.previewUrl);
+        setAttachment(null);
+      }
+
+      const body: Record<string, unknown> = { content, channel };
+
+      if (mediaUrl && mediaType) {
+        body.mediaUrl = mediaUrl;
+        body.mediaType = mediaType;
+      }
+
+      if (replyingTo && isWhatsApp) {
+        body.quotedReply = {
+          targetMessageId: replyingTo.id,
+          quotedBody: replyingTo.content,
+        };
+      }
+
+      setReplyingTo(null);
+
       await fetch('/api/message', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -61,10 +227,15 @@ export function MessagePanel({ readOnly = false }: MessagePanelProps) {
     }
   };
 
-  const chatBg =
-    channel === 'whatsapp'
-      ? 'bg-[#ece5dd] dark:bg-[#0b141a]'
-      : 'bg-white dark:bg-slate-900';
+  const chatBg = isWhatsApp ? 'bg-[#ece5dd] dark:bg-[#0b141a]' : 'bg-white dark:bg-slate-900';
+
+  const attachmentCategory = attachment ? getMediaCategory(attachment.mediaType, channel) : null;
+
+  // On WhatsApp, certain media types don't support text captions
+  const captionDisabled =
+    isWhatsApp &&
+    !!attachmentCategory &&
+    ['video', 'audio', 'document', 'contact'].includes(attachmentCategory);
 
   return (
     <div className="flex flex-col h-full">
@@ -79,46 +250,223 @@ export function MessagePanel({ readOnly = false }: MessagePanelProps) {
         {messages.map((msg) => (
           <ChatBubble key={msg.id} message={msg} />
         ))}
-        {channel === 'whatsapp' && typingIndicator?.active && <TypingIndicator />}
+        {isWhatsApp && typingIndicator?.active && <TypingIndicator />}
         <div ref={bottomRef} />
       </div>
 
       {!readOnly && (
         <>
-          {replyingTo && channel === 'whatsapp' && (
+          {replyingTo && isWhatsApp && (
             <QuotedReplyPreview message={replyingTo} onCancel={() => setReplyingTo(null)} />
           )}
+
+          {/* File error banner */}
+          {fileError && (
+            <div
+              className={`px-3 py-2 flex items-center gap-2 border-t text-sm
+                          ${
+                            isWhatsApp
+                              ? 'bg-red-50 dark:bg-red-950/30 border-[#d1d1d1] dark:border-[#2a3942]'
+                              : 'bg-red-50 dark:bg-red-950/30 border-slate-200 dark:border-slate-700'
+                          }`}
+            >
+              <svg
+                className="w-4 h-4 text-red-500 shrink-0"
+                fill="none"
+                viewBox="0 0 24 24"
+                strokeWidth={1.5}
+                stroke="currentColor"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M12 9v3.75m9-.75a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9 3.75h.008v.008H12v-.008Z"
+                />
+              </svg>
+              <span className="text-red-600 dark:text-red-400">{fileError}</span>
+              <button
+                onClick={() => setFileError(null)}
+                className="ml-auto text-red-400 hover:text-red-600 dark:hover:text-red-300"
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+          )}
+
+          {/* Attachment preview strip */}
+          {attachment && (
+            <div
+              className={`px-3 pt-2 pb-1 flex items-center gap-2 border-t
+                          ${
+                            isWhatsApp
+                              ? 'bg-[#f0f0f0] dark:bg-[#1f2c34] border-[#d1d1d1] dark:border-[#2a3942]'
+                              : 'bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700'
+                          }`}
+            >
+              {attachmentCategory === 'image' || attachmentCategory === 'sticker' ? (
+                <img
+                  src={attachment.previewUrl}
+                  alt="Attachment preview"
+                  className="w-16 h-16 object-cover rounded-lg border border-slate-200 dark:border-slate-600"
+                />
+              ) : attachmentCategory === 'video' ? (
+                <video
+                  src={attachment.previewUrl}
+                  className="w-16 h-16 object-cover rounded-lg border border-slate-200 dark:border-slate-600"
+                />
+              ) : (
+                <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600">
+                  <svg
+                    className="w-5 h-5 text-slate-500 dark:text-slate-400 shrink-0"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    strokeWidth={1.5}
+                    stroke="currentColor"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z"
+                    />
+                  </svg>
+                  <span className="text-sm text-slate-700 dark:text-slate-300 truncate max-w-[200px]">
+                    {attachment.file.name}
+                  </span>
+                </div>
+              )}
+              <button
+                onClick={removeAttachment}
+                className="shrink-0 w-6 h-6 rounded-full flex items-center justify-center
+                           bg-slate-200 dark:bg-slate-600 hover:bg-slate-300 dark:hover:bg-slate-500
+                           text-slate-600 dark:text-slate-300 transition-colors"
+                aria-label="Remove attachment"
+              >
+                <svg
+                  className="w-3.5 h-3.5"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  strokeWidth={2}
+                  stroke="currentColor"
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
+                </svg>
+              </button>
+              {captionDisabled && (
+                <span className="text-xs text-amber-600 dark:text-amber-400 ml-auto">
+                  Text captions not supported for this media type
+                </span>
+              )}
+            </div>
+          )}
+
           <div
             className={`px-3 pt-2 pb-7 flex items-end gap-2 border-t
                         ${
-                          channel === 'whatsapp'
+                          isWhatsApp
                             ? 'bg-[#f0f0f0] dark:bg-[#1f2c34] border-[#d1d1d1] dark:border-[#2a3942]'
                             : 'bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700'
                         }`}
           >
+            {/* Hidden file input */}
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept={fileAccept}
+              onChange={handleFileSelect}
+              className="hidden"
+            />
+
+            {/* Attachment / paperclip button — WhatsApp only */}
+            {isWhatsApp && (
+              <div className="relative" ref={attachMenuRef}>
+                <button
+                  onClick={() => setAttachMenuOpen(!attachMenuOpen)}
+                  disabled={sending}
+                  className="shrink-0 w-9 h-9 rounded-full flex items-center justify-center
+                             text-slate-500 dark:text-slate-400
+                             hover:bg-slate-200 dark:hover:bg-slate-600
+                             disabled:opacity-40
+                             transition-colors"
+                  aria-label="Attach file"
+                >
+                  <svg
+                    className={`w-5 h-5 transition-transform ${attachMenuOpen ? 'rotate-45' : ''}`}
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    strokeWidth={1.5}
+                    stroke="currentColor"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      d="m18.375 12.739-7.693 7.693a4.5 4.5 0 0 1-6.364-6.364l10.94-10.94A3 3 0 1 1 19.5 7.372L8.552 18.32m.009-.01-.01.01m5.699-9.941-7.81 7.81a1.5 1.5 0 0 0 2.112 2.13"
+                    />
+                  </svg>
+                </button>
+
+                {/* Attachment type menu */}
+                {attachMenuOpen && (
+                  <div
+                    className="absolute bottom-full left-0 mb-2 w-48 py-1.5
+                                bg-white dark:bg-slate-800 rounded-xl shadow-xl
+                                border border-slate-200 dark:border-slate-700
+                                animate-slide-up z-30"
+                  >
+                    {ATTACHMENT_OPTIONS.map((opt) => (
+                      <button
+                        key={opt.label}
+                        onClick={() => openFilePicker(opt.accept)}
+                        className="w-full flex items-center gap-3 px-3 py-2
+                                   hover:bg-slate-50 dark:hover:bg-slate-700/60
+                                   transition-colors text-left"
+                      >
+                        <span
+                          className={`w-8 h-8 rounded-full flex items-center justify-center ${opt.bg} ${opt.color}`}
+                        >
+                          {opt.icon}
+                        </span>
+                        <span className="text-sm text-slate-700 dark:text-slate-300">
+                          {opt.label}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
             <input
               type="text"
-              value={input}
+              value={captionDisabled ? '' : input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder="Type a message..."
-              disabled={sending}
+              placeholder={captionDisabled ? 'Captions not supported' : 'Type a message...'}
+              disabled={sending || captionDisabled}
               className="flex-1 rounded-full px-4 py-2 text-sm
                          bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100
                          border border-slate-200 dark:border-slate-600
                          placeholder:text-slate-400 dark:placeholder:text-slate-500
                          focus:outline-none focus:ring-2 focus:ring-indigo-400/50 dark:focus:ring-indigo-500/40
+                         disabled:opacity-50 disabled:cursor-not-allowed
                          transition-shadow"
             />
             <button
               onClick={sendMessage}
-              disabled={sending || !input.trim()}
+              disabled={sending || (!input.trim() && !attachment)}
               className="shrink-0 w-9 h-9 rounded-full flex items-center justify-center
                          bg-indigo-500 hover:bg-indigo-600 text-white
                          disabled:opacity-40 disabled:hover:bg-indigo-500
                          transition-colors"
             >
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+              <svg
+                className="w-4 h-4"
+                fill="none"
+                viewBox="0 0 24 24"
+                strokeWidth={2}
+                stroke="currentColor"
+              >
                 <path
                   strokeLinecap="round"
                   strokeLinejoin="round"

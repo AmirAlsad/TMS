@@ -1,5 +1,13 @@
 import { create } from 'zustand';
-import type { Message, LogEntry, Channel, EvalResult, ReadStatus, ReadReceiptMode } from '@tms/shared';
+import type {
+  Message,
+  LogEntry,
+  Channel,
+  EvalResult,
+  ReadStatus,
+  ReadReceiptMode,
+  BatchRun,
+} from '@tms/shared';
 
 export type AppMode = 'playground' | 'automated';
 export type Theme = 'light' | 'dark';
@@ -32,6 +40,11 @@ interface TmsStore {
   currentEval: EvalStatus | null;
   evalResults: EvalResult[];
 
+  // Suite & batch state
+  evalSuites: string[];
+  activeBatchRun: BatchRun | null;
+  batchRuns: BatchRun[];
+
   // WhatsApp state
   messageReadStates: Record<string, ReadStatus>;
   messageReactions: Record<string, { emoji: string; fromUser: boolean }[]>;
@@ -57,6 +70,13 @@ interface TmsStore {
   setEvalResults: (results: EvalResult[]) => void;
   clearEval: () => void;
 
+  // Suite & batch actions
+  setEvalSuites: (suites: string[]) => void;
+  startBatchRun: (run: BatchRun) => void;
+  completeBatchRun: (run: BatchRun) => void;
+  setBatchRuns: (runs: BatchRun[]) => void;
+  clearBatchRun: () => void;
+
   // WhatsApp actions
   setReadState: (messageId: string, status: ReadStatus) => void;
   addReaction: (messageId: string, emoji: string, fromUser: boolean) => void;
@@ -78,6 +98,11 @@ export const useStore = create<TmsStore>((set, get) => ({
   evalSpecs: [],
   currentEval: null,
   evalResults: [],
+
+  // Suite & batch state
+  evalSuites: [],
+  activeBatchRun: null,
+  batchRuns: [],
 
   // WhatsApp state
   messageReadStates: {},
@@ -141,6 +166,22 @@ export const useStore = create<TmsStore>((set, get) => ({
     })),
   setEvalResults: (results) => set({ evalResults: results }),
   clearEval: () => set({ currentEval: null }),
+
+  // Suite & batch actions
+  setEvalSuites: (suites) => set({ evalSuites: suites }),
+  startBatchRun: (run) =>
+    set((s) => ({
+      activeBatchRun: run,
+      batchRuns: [run, ...s.batchRuns.filter((r) => r.id !== run.id)],
+      messages: s.messages.filter((m) => m.channel !== s.channel),
+    })),
+  completeBatchRun: (run) =>
+    set((s) => ({
+      activeBatchRun: s.activeBatchRun?.id === run.id ? run : s.activeBatchRun,
+      batchRuns: s.batchRuns.map((r) => (r.id === run.id ? run : r)),
+    })),
+  setBatchRuns: (runs) => set({ batchRuns: runs }),
+  clearBatchRun: () => set({ activeBatchRun: null }),
 
   // WhatsApp actions
   setReadState: (messageId, status) =>

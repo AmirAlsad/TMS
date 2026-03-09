@@ -17,15 +17,19 @@ Send a message and receive the bot's response.
   "quotedReply": {
     "targetMessageId": "msg-uuid",
     "quotedBody": "Original message text"
-  }
+  },
+  "mediaType": "image/jpeg",
+  "mediaUrl": "http://localhost:4000/api/media/photo-abc123.jpg"
 }
 ```
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `content` | `string` | Yes | Message text. |
+| `content` | `string` | Yes (unless `mediaUrl` provided) | Message text. |
 | `channel` | `"sms"` \| `"whatsapp"` | Yes | Channel to simulate. |
 | `quotedReply` | `object` | No | Quote-reply to a previous message (WhatsApp). |
+| `mediaType` | `string` | No | MIME type of attached media (WhatsApp only). |
+| `mediaUrl` | `string` | No | URL of attached media file (WhatsApp only). |
 
 **Response:** `200` with the bot's `Message` object.
 
@@ -35,7 +39,15 @@ curl -X POST http://localhost:4000/api/message \
   -d '{"content": "Hi there", "channel": "sms"}'
 ```
 
-**Errors:** `400` if `content` or `channel` is missing. `502` if the bot endpoint fails.
+**Example with media (WhatsApp):**
+
+```bash
+curl -X POST http://localhost:4000/api/message \
+  -H "Content-Type: application/json" \
+  -d '{"content": "Check out this photo", "channel": "whatsapp", "mediaType": "image/jpeg", "mediaUrl": "http://localhost:4000/api/media/photo-abc123.jpg"}'
+```
+
+**Errors:** `400` if `content` or `channel` is missing (content not required when `mediaUrl` is provided). `502` if the bot endpoint fails.
 
 ---
 
@@ -383,6 +395,55 @@ curl -X POST http://localhost:4000/api/whatsapp/read \
 
 ---
 
+### POST /api/media
+
+Upload a media file for attachment to a WhatsApp message. Files are stored in `.tms/media/` and served via `GET /api/media/:filename`.
+
+**Request:** Multipart form data with a single file field.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `file` | `File` | Yes | The media file to upload. Max 16MB. |
+
+**Response:** `200`
+
+```json
+{
+  "url": "http://localhost:4000/api/media/1709971200000-photo.jpg",
+  "filename": "1709971200000-photo.jpg",
+  "mediaType": "image/jpeg"
+}
+```
+
+```bash
+curl -X POST http://localhost:4000/api/media \
+  -F "file=@photo.jpg"
+```
+
+**Errors:** `400` if no file is provided or the file exceeds 16MB.
+
+---
+
+### GET /api/media/:filename
+
+Serve a previously uploaded media file.
+
+**Parameters:**
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `filename` | `string` | Yes | The filename returned by `POST /api/media`. |
+
+**Response:** `200` with the file contents and appropriate `Content-Type` header.
+
+```bash
+curl http://localhost:4000/api/media/1709971200000-photo.jpg --output photo.jpg
+```
+
+**Errors:** `404` if the file does not exist.
+
+---
+
 ## WebSocket Protocol
 
 Connect to `ws://localhost:4000/ws`. Messages are JSON-encoded `WsMessage` objects:
@@ -522,6 +583,8 @@ Your bot can include additional metadata alongside the response text:
 ```json
 {
   "message": "Your appointment is confirmed for Tuesday.",
+  "mediaType": "image/jpeg",
+  "mediaUrl": "https://example.com/confirmation.jpg",
   "usage": {
     "promptTokens": 150,
     "completionTokens": 45,
@@ -544,6 +607,8 @@ Your bot can include additional metadata alongside the response text:
 
 | Field | Type | Description |
 |-------|------|-------------|
+| `mediaType` | `string` | MIME type of media to send back (WhatsApp only). |
+| `mediaUrl` | `string` | URL of media to send back (WhatsApp only). |
 | `usage.promptTokens` | `number` | Prompt tokens used by the bot's LLM. |
 | `usage.completionTokens` | `number` | Completion tokens used. |
 | `usage.totalTokens` | `number` | Total tokens used. |

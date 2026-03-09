@@ -21,9 +21,7 @@ export function resolveSpecPath(nameOrPath: string): string {
   if (fs.existsSync(yamlPath)) return yamlPath;
   if (fs.existsSync(ymlPath)) return ymlPath;
 
-  throw new Error(
-    `Spec "${nameOrPath}" not found. Looked for:\n  ${yamlPath}\n  ${ymlPath}`,
-  );
+  throw new Error(`Spec "${nameOrPath}" not found. Looked for:\n  ${yamlPath}\n  ${ymlPath}`);
 }
 
 export async function loadSpec(nameOrPath: string): Promise<EvalSpec> {

@@ -1,0 +1,10 @@
+name: whatsapp
+description: WhatsApp-specific eval suite covering booking, multi-option selection, reactions, and media handling
+specs:
+  - whatsapp-appointment-booking
+  - whatsapp-multi-option
+  - whatsapp-reactions-only
+  - whatsapp-media-image
+  - whatsapp-media-vcard
+  - whatsapp-media-document
+  - whatsapp-media-audio

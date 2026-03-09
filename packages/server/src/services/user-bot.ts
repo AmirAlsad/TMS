@@ -1,7 +1,14 @@
 import { generateText, tool } from 'ai';
 import type { Tool } from 'ai';
 import { z } from 'zod';
-import type { EvalSpec, Message, TmsConfig, TokenUsage, UserBotAction, WhatsAppEvent } from '@tms/shared';
+import type {
+  EvalSpec,
+  Message,
+  TmsConfig,
+  TokenUsage,
+  UserBotAction,
+  WhatsAppEvent,
+} from '@tms/shared';
 import { resolveModel } from './ai-registry.js';
 
 type UserBotConfig = NonNullable<TmsConfig['userBot']>;
@@ -12,10 +19,7 @@ const sendMessageTool = tool({
   description: 'Send a text message to the bot.',
   inputSchema: z.object({
     body: z.string().describe('The message text to send'),
-    goal_complete: z
-      .boolean()
-      .optional()
-      .describe('Set true if your goal has been fully achieved'),
+    goal_complete: z.boolean().optional().describe('Set true if your goal has been fully achieved'),
   }),
 });
 
@@ -24,16 +28,16 @@ const reactToMessageTool = tool({
     'React to a specific message with an emoji. Use for emotional acknowledgment or quick feedback without a full reply.',
   inputSchema: z.object({
     targetMessageId: z.string().describe('The id of the message to react to'),
-    emoji: z.string().describe('A single emoji character'),
+    emoji: z
+      .string()
+      .describe('A single emoji character (e.g. 👍, ❤️, 😂). Must be a valid Unicode emoji.'),
   }),
 });
 
 const removeReactionTool = tool({
   description: 'Remove a previously sent reaction from a message.',
   inputSchema: z.object({
-    targetMessageId: z
-      .string()
-      .describe('The id of the message to remove the reaction from'),
+    targetMessageId: z.string().describe('The id of the message to remove the reaction from'),
   }),
 });
 
@@ -43,10 +47,7 @@ const replyToMessageTool = tool({
   inputSchema: z.object({
     targetMessageId: z.string().describe('The id of the message to quote-reply to'),
     body: z.string().describe('The reply text'),
-    goal_complete: z
-      .boolean()
-      .optional()
-      .describe('Set true if your goal has been fully achieved'),
+    goal_complete: z.boolean().optional().describe('Set true if your goal has been fully achieved'),
   }),
 });
 
@@ -54,6 +55,22 @@ const sendVoiceNoteTool = tool({
   description: 'Send a voice note. Only available when the eval spec allows voice notes.',
   inputSchema: z.object({
     audioRef: z.string().describe('Reference key for a pre-recorded voice note asset'),
+  }),
+});
+
+const sendMediaTool = tool({
+  description:
+    'Send a media file (image, document, or contact card) to the bot. Use the media asset refs provided in your instructions.',
+  inputSchema: z.object({
+    mediaType: z
+      .string()
+      .describe('MIME type of the media (e.g. "image/jpeg", "application/pdf", "text/vcard")'),
+    mediaUrl: z.string().describe('URL or asset reference for the media file'),
+    caption: z.string().optional().describe('Optional text caption to accompany the media'),
+    goal_complete: z
+      .boolean()
+      .optional()
+      .describe('Set true if your goal has been fully achieved'),
   }),
 });
 
@@ -105,6 +122,24 @@ function buildSystemPrompt(evalSpec: EvalSpec, customBase?: string): string {
       lines.push(
         `- **send_voice_note**: Send a voice note. Available audio refs: ${assets.length > 0 ? assets.join(', ') : '(none pre-recorded)'}`,
       );
+    }
+
+    if (waConfig?.allowMediaMessages) {
+      const assets = waConfig.mediaAssets ?? [];
+      if (assets.length > 0) {
+        const assetLines = assets.map(
+          (a) => `    - "${a.ref}": mediaType="${a.mediaType}", mediaUrl="${a.mediaUrl}"`,
+        );
+        lines.push(
+          `- **send_media**: Send an image, document, or contact card. Available assets:`,
+          ...assetLines,
+          `  When calling send_media, use the exact mediaType and mediaUrl values listed above.`,
+        );
+      } else {
+        lines.push(
+          `- **send_media**: Send an image, document, or contact card to the bot.`,
+        );
+      }
     }
 
     lines.push(
@@ -224,6 +259,10 @@ function buildToolSet(evalSpec: EvalSpec): Record<string, Tool> {
     if (waConfig?.allowVoiceNotes) {
       tools.send_voice_note = sendVoiceNoteTool;
     }
+
+    if (waConfig?.allowMediaMessages) {
+      tools.send_media = sendMediaTool;
+    }
   }
 
   return tools;
@@ -261,6 +300,14 @@ function toolCallToAction(toolName: string, args: Record<string, unknown>): User
       return {
         type: 'send_voice_note',
         audioRef: args.audioRef as string,
+      };
+    case 'send_media':
+      return {
+        type: 'send_media',
+        mediaType: args.mediaType as string,
+        mediaUrl: args.mediaUrl as string,
+        caption: args.caption as string | undefined,
+        goalComplete: args.goal_complete as boolean | undefined,
       };
     case 'wait':
       return { type: 'wait' };

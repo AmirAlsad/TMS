@@ -1,0 +1,22 @@
+{
+  "id": "batch_2026-03-09_06-15-38_pkxt",
+  "label": "regression",
+  "suiteName": "regression",
+  "specNames": [
+    "cancel-appointment",
+    "reschedule-appointment",
+    "unavailable-time-handling",
+    "service-inquiry",
+    "conflicting-slot"
+  ],
+  "specIds": [
+    "2026-03-09_06-15-38_3mxr",
+    "2026-03-09_06-15-38_xhij",
+    "2026-03-09_06-15-38_2jlp",
+    "2026-03-09_06-15-38_0f6v",
+    "2026-03-09_06-15-38_dnl9"
+  ],
+  "status": "completed",
+  "startedAt": "2026-03-09T10:15:38.707Z",
+  "completedAt": "2026-03-09T10:17:09.864Z"
+}

@@ -13,9 +13,9 @@ export function createMessageRouter(
   const callbackUrl = `${getCallbackBaseUrl(config)}/api/whatsapp`;
 
   router.post('/', async (req, res) => {
-    const { content, channel, quotedReply } = req.body;
+    const { content, channel, quotedReply, mediaType, mediaUrl } = req.body;
 
-    if (!content || !channel) {
+    if ((!content && !mediaUrl) || !channel) {
       res.status(400).json({ error: 'content and channel are required' });
       return;
     }
@@ -33,6 +33,12 @@ export function createMessageRouter(
       userMessage.quotedReply = quotedReply as QuotedReply;
     }
 
+    // Attach media fields if provided
+    if (mediaType && mediaUrl) {
+      userMessage.mediaType = mediaType;
+      userMessage.mediaUrl = mediaUrl;
+    }
+
     broadcast({ type: 'user:message', payload: userMessage });
 
     const isWhatsApp = channel === 'whatsapp';
@@ -43,11 +49,7 @@ export function createMessageRouter(
     }
 
     try {
-      const botResult = await sendToBot(
-        config,
-        userMessage,
-        isWhatsApp ? callbackUrl : undefined,
-      );
+      const botResult = await sendToBot(config, userMessage, isWhatsApp ? callbackUrl : undefined);
 
       // Clear any lingering typing indicator after bot responds
       if (isWhatsApp) {
@@ -64,6 +66,12 @@ export function createMessageRouter(
         channel,
         timestamp: new Date().toISOString(),
       };
+
+      // Attach media fields from bot response
+      if (botResult.mediaType) {
+        botMessage.mediaType = botResult.mediaType;
+        botMessage.mediaUrl = botResult.mediaUrl;
+      }
 
       broadcast({ type: 'bot:message', payload: botMessage });
 
