@@ -8,6 +8,7 @@ import type {
   WhatsAppEvent,
 } from '@tms/shared';
 import { resolveModel } from './ai-registry.js';
+import type { EvalLogFn } from './eval-logger.js';
 
 export interface JudgeInput {
   transcript: Message[];
@@ -173,12 +174,24 @@ function parseJudgeResponse(text: string, input: JudgeInput): Omit<JudgeOutput, 
 export async function evaluateTranscript(
   config: TmsConfig,
   input: JudgeInput,
+  log?: EvalLogFn,
 ): Promise<JudgeOutput> {
   const prompt = buildPrompt(input);
 
   if (!config.judge) {
     throw new Error('Judge config is required for evaluation');
   }
+
+  log?.('info', `Judge starting evaluation`, {
+    model: config.judge.model,
+    requirementCount: input.requirements.length,
+    specName: input.specName,
+  });
+  log?.('debug', 'Judge prompt built', {
+    systemPromptLength: prompt.system.length,
+    userPromptLength: prompt.user.length,
+    model: config.judge.model,
+  });
 
   const { text, usage } = await generateText({
     model: resolveModel(config.judge.model),
@@ -187,8 +200,29 @@ export async function evaluateTranscript(
     maxOutputTokens: 4096,
   });
 
+  log?.('debug', 'Judge response received', {
+    responseLength: text.length,
+    promptTokens: usage.inputTokens ?? 0,
+    completionTokens: usage.outputTokens ?? 0,
+  });
+
+  const parsed = parseJudgeResponse(text, input);
+
+  // Log per-requirement results — warn if failed, info if passed
+  for (const req of parsed.requirements) {
+    const level = req.classification === 'failed' ? 'warn' : 'info';
+    log?.(level, `Requirement ${req.classification}: ${req.description}`, {
+      classification: req.classification,
+      reasoning: req.reasoning,
+    });
+  }
+
+  log?.('info', `Judge complete: ${parsed.classification}`, {
+    classification: parsed.classification,
+  });
+
   return {
-    ...parseJudgeResponse(text, input),
+    ...parsed,
     usage: {
       promptTokens: usage.inputTokens ?? 0,
       completionTokens: usage.outputTokens ?? 0,

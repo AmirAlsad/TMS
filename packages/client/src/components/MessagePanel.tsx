@@ -37,7 +37,7 @@ const ATTACHMENT_OPTIONS = [
   },
   {
     label: 'Audio',
-    accept: 'audio/ogg,audio/amr,audio/3gpp,audio/aac,audio/mpeg',
+    accept: 'audio/ogg,audio/aac,audio/mpeg',
     icon: (
       <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
         <path strokeLinecap="round" strokeLinejoin="round" d="M19.114 5.636a9 9 0 0 1 0 12.728M16.463 8.288a5.25 5.25 0 0 1 0 7.424M6.75 8.25l4.72-4.72a.75.75 0 0 1 1.28.53v15.88a.75.75 0 0 1-1.28.53l-4.72-4.72H4.51c-.88 0-1.704-.507-1.938-1.354A9.009 9.009 0 0 1 2.25 12c0-.83.112-1.633.322-2.396C2.806 8.756 3.63 8.25 4.51 8.25H6.75Z" />
@@ -227,7 +227,7 @@ export function MessagePanel({ readOnly = false }: MessagePanelProps) {
     }
   };
 
-  const chatBg = isWhatsApp ? 'bg-[#ece5dd] dark:bg-[#0b141a]' : 'bg-white dark:bg-slate-900';
+  const chatBg = isWhatsApp ? 'bg-whatsapp-bg dark:bg-whatsapp-bg-dark' : 'bg-white dark:bg-slate-900';
 
   const attachmentCategory = attachment ? getMediaCategory(attachment.mediaType, channel) : null;
 
@@ -237,19 +237,80 @@ export function MessagePanel({ readOnly = false }: MessagePanelProps) {
     !!attachmentCategory &&
     ['video', 'audio', 'document', 'contact'].includes(attachmentCategory);
 
+  // Compute grouping for messages
+  const groupedMessages = messages.map((msg, i) => {
+    const prev = i > 0 ? messages[i - 1] : null;
+    const next = i < messages.length - 1 ? messages[i + 1] : null;
+    const isFirstInGroup = !prev || prev.role !== msg.role;
+    const isLastInGroup = !next || next.role !== msg.role;
+    return { msg, isFirstInGroup, isLastInGroup };
+  });
+
   return (
     <div className="flex flex-col h-full">
       <ChannelHeader channel={channel} />
 
-      <div className={`flex-1 overflow-y-auto px-4 py-3 space-y-1.5 scrollbar-thin ${chatBg}`}>
+      <div
+        className={`flex-1 overflow-y-auto px-4 py-3 scrollbar-thin ${chatBg}`}
+        style={
+          isWhatsApp
+            ? {
+                backgroundImage: 'url(/assets/whatsapp-background.png)',
+                backgroundSize: '400px',
+                backgroundRepeat: 'repeat',
+                backgroundBlendMode: 'multiply',
+              }
+            : undefined
+        }
+      >
         {messages.length === 0 && (
-          <p className="text-center text-slate-400 dark:text-slate-500 mt-12 text-sm">
-            {readOnly ? 'Waiting for eval to start...' : 'Send a message to start'}
-          </p>
+          <div className="flex flex-col items-center justify-center mt-16 gap-3">
+            {isWhatsApp ? (
+              <svg
+                className="w-12 h-12 text-slate-300 dark:text-slate-600"
+                viewBox="0 0 24 24"
+                fill="currentColor"
+              >
+                <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413Z" />
+              </svg>
+            ) : (
+              <svg
+                className="w-12 h-12 text-slate-300 dark:text-slate-600"
+                fill="none"
+                viewBox="0 0 24 24"
+                strokeWidth={1.2}
+                stroke="currentColor"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M8.625 12a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Zm0 0H8.25m4.125 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Zm0 0H12m4.125 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Zm0 0h-.375M21 12c0 4.556-4.03 8.25-9 8.25a9.764 9.764 0 0 1-2.555-.337A5.972 5.972 0 0 1 5.41 20.97a5.969 5.969 0 0 1-.474-.065 4.48 4.48 0 0 0 .978-2.025c.09-.457-.133-.901-.467-1.226C3.93 16.178 3 14.189 3 12c0-4.556 4.03-8.25 9-8.25s9 3.694 9 8.25Z"
+                />
+              </svg>
+            )}
+            <div className="text-center">
+              <p className="text-sm font-medium text-slate-400 dark:text-slate-500">
+                {readOnly ? 'Waiting for eval to start...' : 'Send a message to get started'}
+              </p>
+              {!readOnly && (
+                <p className="text-xs text-slate-300 dark:text-slate-600 mt-1">
+                  Messages appear here
+                </p>
+              )}
+            </div>
+          </div>
         )}
-        {messages.map((msg) => (
-          <ChatBubble key={msg.id} message={msg} />
-        ))}
+        <div className="space-y-0.5">
+          {groupedMessages.map(({ msg, isFirstInGroup, isLastInGroup }, i) => (
+            <div key={msg.id} className={isFirstInGroup && i > 0 ? 'pt-1.5' : ''}>
+              <ChatBubble
+                message={msg}
+                isFirstInGroup={isFirstInGroup}
+                isLastInGroup={isLastInGroup}
+              />
+            </div>
+          ))}
+        </div>
         {isWhatsApp && typingIndicator?.active && <TypingIndicator />}
         <div ref={bottomRef} />
       </div>
@@ -266,7 +327,7 @@ export function MessagePanel({ readOnly = false }: MessagePanelProps) {
               className={`px-3 py-2 flex items-center gap-2 border-t text-sm
                           ${
                             isWhatsApp
-                              ? 'bg-red-50 dark:bg-red-950/30 border-[#d1d1d1] dark:border-[#2a3942]'
+                              ? 'bg-red-50 dark:bg-red-950/30 border-whatsapp-border dark:border-whatsapp-border-dark'
                               : 'bg-red-50 dark:bg-red-950/30 border-slate-200 dark:border-slate-700'
                           }`}
             >
@@ -301,7 +362,7 @@ export function MessagePanel({ readOnly = false }: MessagePanelProps) {
               className={`px-3 pt-2 pb-1 flex items-center gap-2 border-t
                           ${
                             isWhatsApp
-                              ? 'bg-[#f0f0f0] dark:bg-[#1f2c34] border-[#d1d1d1] dark:border-[#2a3942]'
+                              ? 'bg-whatsapp-input-bg dark:bg-whatsapp-input-bg-dark border-whatsapp-border dark:border-whatsapp-border-dark'
                               : 'bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700'
                           }`}
             >
@@ -362,10 +423,10 @@ export function MessagePanel({ readOnly = false }: MessagePanelProps) {
           )}
 
           <div
-            className={`px-3 pt-2 pb-7 flex items-end gap-2 border-t
+            className={`px-4 pt-2 pb-7 flex items-end gap-2 border-t
                         ${
                           isWhatsApp
-                            ? 'bg-[#f0f0f0] dark:bg-[#1f2c34] border-[#d1d1d1] dark:border-[#2a3942]'
+                            ? 'bg-whatsapp-input-bg dark:bg-whatsapp-input-bg-dark border-whatsapp-border dark:border-whatsapp-border-dark'
                             : 'bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700'
                         }`}
           >
@@ -455,10 +516,12 @@ export function MessagePanel({ readOnly = false }: MessagePanelProps) {
             <button
               onClick={sendMessage}
               disabled={sending || (!input.trim() && !attachment)}
-              className="shrink-0 w-9 h-9 rounded-full flex items-center justify-center
-                         bg-indigo-500 hover:bg-indigo-600 text-white
-                         disabled:opacity-40 disabled:hover:bg-indigo-500
-                         transition-colors"
+              className={`shrink-0 w-9 h-9 rounded-full flex items-center justify-center
+                         text-white disabled:opacity-40 transition-colors ${
+                           isWhatsApp
+                             ? 'bg-whatsapp-green hover:bg-[#1fbc5a] disabled:hover:bg-whatsapp-green'
+                             : 'bg-indigo-500 hover:bg-indigo-600 disabled:hover:bg-indigo-500'
+                         }`}
             >
               <svg
                 className="w-4 h-4"

@@ -1,8 +1,8 @@
 name: whatsapp-media-audio
 description: >
-  Test that the bot gracefully handles a voice note by acknowledging
-  receipt and asking the user to send a text message instead, since
-  audio transcription is not yet implemented.
+  Test that the bot correctly handles a voice note — transcribing it
+  via STT when configured, or gracefully degrading when no STT provider
+  is available.
 channel: whatsapp
 
 userBot:

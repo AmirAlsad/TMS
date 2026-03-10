@@ -7,10 +7,10 @@ interface ChannelHeaderProps {
 export function ChannelHeader({ channel }: ChannelHeaderProps) {
   if (channel === 'whatsapp') {
     return (
-      <div className="bg-[#075e54] dark:bg-[#1f2c34] px-5 pt-14 pb-3 flex items-center gap-3">
+      <div className="bg-whatsapp-teal dark:bg-whatsapp-input-bg-dark px-5 pt-14 pb-3 flex items-center gap-3">
         <div
-          className="w-9 h-9 rounded-full bg-[#25D366]/20
-                      flex items-center justify-center text-[#25D366] text-sm font-bold"
+          className="w-9 h-9 rounded-full bg-whatsapp-green/20
+                      flex items-center justify-center text-whatsapp-green text-sm font-bold"
         >
           B
         </div>

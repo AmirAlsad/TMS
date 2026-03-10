@@ -76,7 +76,7 @@ WhatsApp channel supports sending and receiving media attachments -- images, sti
 |----------|-----------|-----------------|
 | Images | `image/jpeg`, `image/png` | `.jpg`, `.png` |
 | Stickers | `image/webp` | `.webp` |
-| Audio | `audio/ogg`, `audio/amr`, `audio/3gpp`, `audio/aac`, `audio/mpeg` | `.ogg`, `.amr`, `.3gpp`, `.aac`, `.mp3` |
+| Audio | `audio/ogg`, `audio/aac`, `audio/mpeg` | `.ogg`, `.aac`, `.mp3` |
 | Video | `video/mp4` | `.mp4` |
 | Documents | `application/pdf`, `application/msword`, etc. | `.pdf`, `.doc`, `.docx`, `.pptx`, `.xlsx` |
 | Contacts | `text/vcard` | `.vcf` |

@@ -8,6 +8,10 @@
     -moz-osx-font-smoothing: grayscale;
   }
 
+  html {
+    @apply transition-colors duration-200;
+  }
+
   html,
   body,
   #root {
@@ -47,12 +51,23 @@
   }
 
   .dot-grid {
+    position: relative;
     background-image: radial-gradient(circle, #d4d4d8 1px, transparent 1px);
     background-size: 20px 20px;
   }
   .dark .dot-grid {
     background-image: radial-gradient(circle, rgba(255, 255, 255, 0.035) 1px, transparent 1px);
     background-size: 20px 20px;
+  }
+  .dot-grid::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background: radial-gradient(ellipse at center, transparent 40%, rgba(245, 245, 244, 0.7) 100%);
+  }
+  .dark .dot-grid::after {
+    background: radial-gradient(ellipse at center, transparent 40%, rgba(12, 13, 20, 0.8) 100%);
   }
 
   .formatted-content p + p {

@@ -57,7 +57,8 @@ app.post('/chat', async (req, res) => {
       }
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Unknown error';
-      log('error', `LLM error on reaction [${ch}]: ${errorMessage}`, { channel: ch, error: errorMessage });
+      const stack = err instanceof Error ? err.stack : undefined;
+      log('error', `LLM error on reaction [${ch}]: ${errorMessage}`, { channel: ch, error: errorMessage, ...(stack ? { stack } : {}) });
       res.status(502).json({ error: `LLM request failed: ${errorMessage}` });
     }
     return;
@@ -81,6 +82,12 @@ app.post('/chat', async (req, res) => {
     channel: ch,
     message: effectiveMessage,
     ...(hasMedia ? { mediaType, mediaUrl } : {}),
+  });
+  log('debug', 'Request context', {
+    messageId,
+    hasMedia,
+    hasQuotedReply: !!quotedReply,
+    channel: ch,
   });
 
   // Fire-and-forget typing indicator if callback URL is provided
@@ -109,10 +116,12 @@ app.post('/chat', async (req, res) => {
       toolResults: result.toolResults,
       ...(result.structuredData ? { structuredData: result.structuredData } : {}),
       ...(result.mediaType ? { mediaType: result.mediaType, mediaUrl: result.mediaUrl } : {}),
+      ...(result.transcription ? { transcription: result.transcription } : {}),
     });
   } catch (err) {
     const errorMessage = err instanceof Error ? err.message : 'Unknown error';
-    log('error', `LLM error on [${ch}]: ${errorMessage}`, { channel: ch, error: errorMessage });
+    const stack = err instanceof Error ? err.stack : undefined;
+    log('error', `LLM error on [${ch}]: ${errorMessage}`, { channel: ch, error: errorMessage, ...(stack ? { stack } : {}) });
     res.status(502).json({ error: `LLM request failed: ${errorMessage}` });
   }
 });

@@ -179,6 +179,7 @@ export interface TmsConfig {
   judge?: JudgeConfig;
   logs?: {
     enabled: boolean;
+    level?: LogLevel;
   };
   server?: {
     port: number;

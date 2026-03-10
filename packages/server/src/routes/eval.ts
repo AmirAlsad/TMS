@@ -21,6 +21,7 @@ import {
   listEvalResults,
   generateEvalId,
 } from '../services/eval-results.js';
+import { createEvalLogger } from '../services/eval-logger.js';
 import { loadEvalSpec, listEvalSpecs } from '../services/eval-spec-loader.js';
 import { loadEvalSuite, listEvalSuites } from '../services/suite-loader.js';
 import {
@@ -123,15 +124,33 @@ async function executeEval(
   await saveEvalResult(result);
   broadcast({ type: 'eval:started', payload: result });
 
+  const log = createEvalLogger(broadcast, config);
+
+  log('info', `Eval started: ${spec.name}`, {
+    evalId,
+    specName: spec.name,
+    channel: spec.channel,
+    requirements: spec.requirements,
+    turnLimit: spec.turnLimit,
+  });
+
   try {
     if (spec.hooks?.before) {
+      log('debug', `Running before hook`, { hook: spec.hooks.before });
       await runHook(spec.hooks.before);
+      log('debug', `Before hook completed`);
     }
 
-    const conversationResult = await runConversation(config, spec, broadcast);
+    const conversationResult = await runConversation(config, spec, broadcast, log);
     result.transcript = conversationResult.transcript;
 
+    log('info', `Conversation completed`, {
+      turnCount: conversationResult.turnCount,
+      goalCompleted: conversationResult.goalCompleted,
+    });
+
     if (conversationResult.error) {
+      log('error', `Conversation failed: ${conversationResult.error}`);
       result.status = 'failed';
       result.error = conversationResult.error;
       result.completedAt = new Date().toISOString();
@@ -142,16 +161,22 @@ async function executeEval(
     }
 
     if (spec.hooks?.after) {
+      log('debug', `Running after hook`, { hook: spec.hooks.after });
       await runHook(spec.hooks.after);
+      log('debug', `After hook completed`);
     }
 
-    const judgeOutput = await evaluateTranscript(config, {
-      transcript: conversationResult.transcript,
-      requirements: spec.requirements,
-      specName: spec.name,
-      specDescription: spec.description,
-      events: conversationResult.events,
-    });
+    const judgeOutput = await evaluateTranscript(
+      config,
+      {
+        transcript: conversationResult.transcript,
+        requirements: spec.requirements,
+        specName: spec.name,
+        specDescription: spec.description,
+        events: conversationResult.events,
+      },
+      log,
+    );
 
     result.requirements = judgeOutput.requirements;
     result.classification = judgeOutput.classification;
@@ -159,9 +184,17 @@ async function executeEval(
     result.completedAt = new Date().toISOString();
 
     result.tokenUsage = buildTokenUsageSummary(conversationResult, judgeOutput.usage);
+
+    log('info', `Eval complete: ${spec.name} — ${judgeOutput.classification}`, {
+      evalId,
+      specName: spec.name,
+      classification: judgeOutput.classification,
+    });
   } catch (err) {
+    const errorMsg = err instanceof Error ? err.message : 'Unknown error';
+    log('error', `Eval failed: ${spec.name} — ${errorMsg}`, { evalId, error: errorMsg });
     result.status = 'failed';
-    result.error = err instanceof Error ? err.message : 'Unknown error';
+    result.error = errorMsg;
     result.completedAt = new Date().toISOString();
   }
 

@@ -19,6 +19,7 @@ import {
 } from './bot-client.js';
 import { UserBot } from './user-bot.js';
 import { ReadReceiptService } from './read-receipt.js';
+import type { EvalLogFn } from './eval-logger.js';
 
 const WAIT_DELAY_MS = 5_000;
 const MAX_CONSECUTIVE_WAITS = 3;
@@ -161,6 +162,7 @@ export async function runConversation(
   config: TmsConfig,
   evalSpec: EvalSpec,
   broadcast: BroadcastFn,
+  log?: EvalLogFn,
 ): Promise<ConversationResult> {
   if (!config.userBot) {
     throw new Error('userBot configuration is required to run automated conversations');
@@ -193,6 +195,7 @@ export async function runConversation(
     let consecutiveWaits = 0;
 
     for (let turn = 0; turn < evalSpec.turnLimit; turn++) {
+      log?.('debug', `Turn ${turn + 1} starting`, { turn: turn + 1, turnLimit: evalSpec.turnLimit });
       const turnUbUsage: TokenUsage = { ...ZERO_USAGE };
 
       // Generate user bot actions (with wait retry loop)
@@ -207,6 +210,9 @@ export async function runConversation(
 
         if (isWaitOnly && consecutiveWaits < MAX_CONSECUTIVE_WAITS) {
           consecutiveWaits++;
+          log?.('debug', `User bot waiting (${consecutiveWaits}/${MAX_CONSECUTIVE_WAITS})`, {
+            consecutiveWaits,
+          });
           await sleep(WAIT_DELAY_MS);
           continue;
         }
@@ -226,6 +232,9 @@ export async function runConversation(
       consecutiveWaits = 0;
 
       // Dispatch all actions, collect any messages to send to bot
+      log?.('debug', `User bot actions`, {
+        actionTypes: actions.map((a) => a.type),
+      });
       let lastSentMessage: Message | null = null;
 
       for (const action of actions) {
@@ -239,6 +248,7 @@ export async function runConversation(
       }
 
       if (goalCompleted) {
+        log?.('info', `Goal completed at turn ${turn + 1}`, { turn: turn + 1 });
         turnUsages.push({ turn, userBot: turnUbUsage });
         break;
       }
@@ -252,10 +262,18 @@ export async function runConversation(
       // Only the callback URL is passed — reactions and read states are sent as
       // separate immediate callbacks, matching Twilio's webhook model.
       if (lastSentMessage) {
+        const botStartTime = performance.now();
         const botResult = await sendToBot(config, lastSentMessage, callbackUrl);
+        const botLatencyMs = Math.round(performance.now() - botStartTime);
 
         // Clear any lingering typing indicator after bot responds
         if (isWhatsApp) emitTyping(broadcast, false, false);
+
+        log?.('info', `Bot response (${botLatencyMs}ms): ${botResult.text.slice(0, 200)}`, {
+          latencyMs: botLatencyMs,
+          contentLength: botResult.text.length,
+          toolCallCount: botResult.toolCalls?.length ?? 0,
+        });
 
         const botMessage = createMessage('bot', botResult.text, evalSpec.channel);
         if (botResult.toolCalls?.length) botMessage.toolCalls = botResult.toolCalls;
@@ -296,6 +314,10 @@ export async function runConversation(
     readReceiptService?.destroy();
 
     const errorMsg = err instanceof Error ? err.message : 'Unknown error';
+    log?.('error', `Conversation error: ${errorMsg}`, {
+      turn: Math.ceil(transcript.length / 2),
+      error: errorMsg,
+    });
     return {
       transcript,
       turnCount: Math.ceil(transcript.length / 2),

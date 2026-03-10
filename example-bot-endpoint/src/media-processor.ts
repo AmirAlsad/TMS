@@ -1,7 +1,29 @@
 import type { TextPart, ImagePart } from 'ai';
 import { log } from './logger.js';
+import { createSttProvider, type SttProvider } from './stt/index.js';
 
 export type MediaContent = Array<TextPart | ImagePart>;
+
+export interface MediaProcessResult {
+  content: MediaContent;
+  /** Populated when audio is successfully transcribed. */
+  transcription?: string;
+}
+
+// Lazily initialized STT provider (null = not configured)
+let sttProvider: SttProvider | null | undefined;
+
+function getSttProvider(): SttProvider | null {
+  if (sttProvider === undefined) {
+    sttProvider = createSttProvider();
+    if (sttProvider) {
+      log('info', `STT provider initialized: ${sttProvider.name}`);
+    } else {
+      log('warn', 'No STT provider configured — audio transcription disabled');
+    }
+  }
+  return sttProvider;
+}
 
 /**
  * Parse a vCard string into a human-readable contact summary.
@@ -63,14 +85,14 @@ function parseVCard(raw: string): string {
  * - Images → ImagePart (SDK fetches URL at inference time for multimodal models)
  * - PDFs → fetch + extract text via pdf-parse
  * - vCards → fetch + parse into formatted text
- * - Audio → placeholder (transcription not yet implemented)
+ * - Audio → STT transcription via configured provider (Groq Whisper, etc.)
  * - Video → acknowledgment placeholder
  */
 export async function buildMediaContent(
   mediaType: string,
   mediaUrl: string,
   textMessage: string,
-): Promise<MediaContent> {
+): Promise<MediaProcessResult> {
   const caption = textMessage?.trim();
 
   // --- Images (including stickers) ---
@@ -86,17 +108,19 @@ export async function buildMediaContent(
       } else {
         parts.push({ type: 'text', text: '[User sent an image]' });
       }
-      return parts;
+      return { content: parts };
     } catch (err) {
       log('warn', `Failed to fetch image from ${mediaUrl}: ${err}`);
-      return [
-        {
-          type: 'text',
-          text: caption
-            ? `${caption}\n\n[Image received but could not be loaded]`
-            : '[Image received but could not be loaded]',
-        },
-      ];
+      return {
+        content: [
+          {
+            type: 'text',
+            text: caption
+              ? `${caption}\n\n[Image received but could not be loaded]`
+              : '[Image received but could not be loaded]',
+          },
+        ],
+      };
     }
   }
 
@@ -114,40 +138,46 @@ export async function buildMediaContent(
         const preamble = caption
           ? `${caption}\n\n[PDF Document — extracted text below]\n`
           : '[PDF Document — extracted text below]\n';
-        return [{ type: 'text', text: `${preamble}${extractedText}` }];
+        return { content: [{ type: 'text', text: `${preamble}${extractedText}` }] };
       } else {
-        return [
-          {
-            type: 'text',
-            text: caption
-              ? `${caption}\n\n[PDF received but no text could be extracted]`
-              : '[PDF received but no text could be extracted]',
-          },
-        ];
+        return {
+          content: [
+            {
+              type: 'text',
+              text: caption
+                ? `${caption}\n\n[PDF received but no text could be extracted]`
+                : '[PDF received but no text could be extracted]',
+            },
+          ],
+        };
       }
     } catch (err) {
       log('warn', `Failed to parse PDF from ${mediaUrl}: ${err}`);
-      return [
-        {
-          type: 'text',
-          text: caption
-            ? `${caption}\n\n[PDF received but could not be read]`
-            : '[PDF received but could not be read]',
-        },
-      ];
+      return {
+        content: [
+          {
+            type: 'text',
+            text: caption
+              ? `${caption}\n\n[PDF received but could not be read]`
+              : '[PDF received but could not be read]',
+          },
+        ],
+      };
     }
   }
 
   // --- Other documents (DOC, DOCX, PPTX, XLSX) ---
   if (mediaType.startsWith('application/')) {
-    return [
-      {
-        type: 'text',
-        text: caption
-          ? `${caption}\n\n[Document received (${mediaType}) — text extraction is not supported for this format. Acknowledge receipt.]`
-          : `[Document received (${mediaType}) — text extraction is not supported for this format. Acknowledge receipt.]`,
-      },
-    ];
+    return {
+      content: [
+        {
+          type: 'text',
+          text: caption
+            ? `${caption}\n\n[Document received (${mediaType}) — text extraction is not supported for this format. Acknowledge receipt.]`
+            : `[Document received (${mediaType}) — text extraction is not supported for this format. Acknowledge receipt.]`,
+        },
+      ],
+    };
   }
 
   // --- vCard contacts ---
@@ -156,54 +186,107 @@ export async function buildMediaContent(
       const response = await fetch(mediaUrl);
       const raw = await response.text();
       const formatted = parseVCard(raw);
-      return [
-        {
-          type: 'text',
-          text: caption
-            ? `${caption}\n\n${formatted}`
-            : `[User shared a contact]\n${formatted}`,
-        },
-      ];
+      return {
+        content: [
+          {
+            type: 'text',
+            text: caption
+              ? `${caption}\n\n${formatted}`
+              : `[User shared a contact]\n${formatted}`,
+          },
+        ],
+      };
     } catch (err) {
       log('warn', `Failed to fetch vCard from ${mediaUrl}: ${err}`);
-      return [
-        {
-          type: 'text',
-          text: caption
-            ? `${caption}\n\n[Contact card received but could not be read]`
-            : '[Contact card received but could not be read]',
-        },
-      ];
+      return {
+        content: [
+          {
+            type: 'text',
+            text: caption
+              ? `${caption}\n\n[Contact card received but could not be read]`
+              : '[Contact card received but could not be read]',
+          },
+        ],
+      };
     }
   }
 
   // --- Audio ---
-  // FUTURE: Integrate a transcription provider here (e.g., OpenAI Whisper via @ai-sdk/openai).
-  // Fetch audio bytes, call transcribeAudio(bytes), return TextPart with transcript.
   if (mediaType.startsWith('audio/')) {
-    return [
-      {
-        type: 'text',
-        text: '[Voice note received — audio transcription is not yet implemented. Acknowledge receipt and ask the user to send a text message instead.]',
-      },
-    ];
+    const provider = getSttProvider();
+
+    if (!provider) {
+      return {
+        content: [
+          {
+            type: 'text',
+            text: '[Voice note received — no STT provider configured. Acknowledge receipt and ask the user to send a text message instead.]',
+          },
+        ],
+      };
+    }
+
+    try {
+      const response = await fetch(mediaUrl);
+      const buffer = Buffer.from(await response.arrayBuffer());
+
+      log('info', `Transcribing audio (${mediaType}, ${buffer.length} bytes) via ${provider.name}`);
+      const result = await provider.transcribe(buffer, mediaType);
+
+      if (!result.text.trim()) {
+        return {
+          content: [
+            {
+              type: 'text',
+              text: '[Voice note received but transcription returned empty text. Acknowledge receipt and ask the user to try again.]',
+            },
+          ],
+        };
+      }
+
+      log('info', `Transcription complete (${result.durationSeconds?.toFixed(1)}s, lang=${result.language})`);
+
+      const transcriptLabel = caption
+        ? `${caption}\n\n[Voice note transcript]: ${result.text}`
+        : `[Voice note transcript]: ${result.text}`;
+
+      return {
+        content: [{ type: 'text', text: transcriptLabel }],
+        transcription: result.text,
+      };
+    } catch (err) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      log('warn', `Audio transcription failed: ${errMsg}`);
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `[Voice note received but transcription failed: ${errMsg}. Acknowledge receipt of the voice note.]`,
+          },
+        ],
+      };
+    }
   }
 
   // --- Video ---
   if (mediaType.startsWith('video/')) {
-    return [
-      {
-        type: 'text',
-        text: '[Video received — video processing is not supported. Acknowledge receipt.]',
-      },
-    ];
+    return {
+      content: [
+        {
+          type: 'text',
+          text: '[Video received — video processing is not supported. Acknowledge receipt.]',
+        },
+      ],
+    };
   }
 
   // --- Fallback ---
-  return [
-    {
-      type: 'text',
-      text: `[Media received: ${mediaType} — unsupported format. Acknowledge receipt.]`,
-    },
-  ];
+  return {
+    content: [
+      {
+        type: 'text',
+        text: `[Media received: ${mediaType} — unsupported format. Acknowledge receipt.]`,
+      },
+    ],
+  };
 }

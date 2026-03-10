@@ -23,7 +23,7 @@ export function createMessageRouter(
     const userMessage: Message = {
       id: crypto.randomUUID(),
       role: 'user' as const,
-      content,
+      content: content ?? '',
       channel,
       timestamp: new Date().toISOString(),
     };
@@ -41,6 +41,11 @@ export function createMessageRouter(
 
     broadcast({ type: 'user:message', payload: userMessage });
 
+    // Broadcast an updated copy of the user message with transcription attached
+    const attachTranscription = (transcription: string) => {
+      broadcast({ type: 'user:message', payload: { ...userMessage, transcription } });
+    };
+
     const isWhatsApp = channel === 'whatsapp';
 
     // Mark all unread bot messages as read when user responds (on_response mode)
@@ -57,6 +62,11 @@ export function createMessageRouter(
           type: 'whatsapp:typing_stop',
           payload: { type: 'typing_stop', fromUser: false, timestamp: new Date().toISOString() },
         });
+      }
+
+      // If the bot returned a transcription of the user's audio, attach it
+      if (botResult.transcription) {
+        attachTranscription(botResult.transcription);
       }
 
       const botMessage: Message = {

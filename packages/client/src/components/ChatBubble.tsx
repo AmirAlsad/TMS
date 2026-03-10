@@ -7,8 +7,10 @@ import { QuotedReplyBlock } from './QuotedReplyBlock.js';
 import { MediaContent } from './MediaContent.js';
 import { useStore } from '../stores/store.js';
 
-interface ChatBubbleProps {
+export interface ChatBubbleProps {
   message: Message;
+  isFirstInGroup?: boolean;
+  isLastInGroup?: boolean;
 }
 
 function CheckMarks({ status }: { status: ReadStatus }) {
@@ -52,7 +54,51 @@ function CheckMarks({ status }: { status: ReadStatus }) {
   );
 }
 
-export function ChatBubble({ message }: ChatBubbleProps) {
+/** WhatsApp tail — small triangle at top corner of first message in group */
+function WhatsAppTail({ isUser }: { isUser: boolean }) {
+  return (
+    <svg
+      className={`absolute top-0 w-2 h-3 ${
+        isUser
+          ? '-right-1.5 text-whatsapp-bubble-user dark:text-whatsapp-bubble-user-dark'
+          : '-left-1.5 text-whatsapp-bubble-bot dark:text-whatsapp-bubble-bot-dark'
+      }`}
+      viewBox="0 0 8 13"
+      fill="currentColor"
+    >
+      {isUser ? (
+        <path d="M0 0 L0 13 L8 0 Z" />
+      ) : (
+        <path d="M8 0 L8 13 L0 0 Z" />
+      )}
+    </svg>
+  );
+}
+
+/** SMS/iMessage tail — curved tail at bottom corner of last message in group */
+function SmsTail({ isUser }: { isUser: boolean }) {
+  return (
+    <svg
+      className={`absolute bottom-0 w-3 h-4 ${
+        isUser ? '-right-2 text-indigo-500' : '-left-2 text-slate-100 dark:text-slate-700'
+      }`}
+      viewBox="0 0 12 16"
+      fill="currentColor"
+    >
+      {isUser ? (
+        <path d="M0 0 C0 8 4 14 12 16 C8 14 4 10 4 0 Z" />
+      ) : (
+        <path d="M12 0 C12 8 8 14 0 16 C4 14 8 10 8 0 Z" />
+      )}
+    </svg>
+  );
+}
+
+export function ChatBubble({
+  message,
+  isFirstInGroup = true,
+  isLastInGroup = true,
+}: ChatBubbleProps) {
   const isUser = message.role === 'user';
   const isWhatsApp = message.channel === 'whatsapp';
   const [showPicker, setShowPicker] = useState(false);
@@ -133,10 +179,23 @@ export function ChatBubble({ message }: ChatBubbleProps) {
   const showManualRead =
     isWhatsApp && !isUser && readReceiptMode === 'manual' && readState !== 'read';
 
+  // --- WhatsApp ---
   if (isWhatsApp) {
+    // Border radius based on grouping
+    const userRadius = isFirstInGroup
+      ? 'rounded-lg rounded-tr-none'
+      : isLastInGroup
+        ? 'rounded-lg rounded-br-sm'
+        : 'rounded-lg rounded-r-sm';
+    const botRadius = isFirstInGroup
+      ? 'rounded-lg rounded-tl-none'
+      : isLastInGroup
+        ? 'rounded-lg rounded-bl-sm'
+        : 'rounded-lg rounded-l-sm';
+
     const bubbleStyles = isUser
-      ? 'bg-[#d9fdd3] dark:bg-[#005c4b] text-slate-900 dark:text-white ml-auto rounded-tr-none'
-      : 'bg-white dark:bg-[#202c33] text-slate-900 dark:text-slate-100 mr-auto rounded-tl-none';
+      ? `bg-whatsapp-bubble-user dark:bg-whatsapp-bubble-user-dark text-slate-900 dark:text-white ml-auto ${userRadius}`
+      : `bg-whatsapp-bubble-bot dark:bg-whatsapp-bubble-bot-dark text-slate-900 dark:text-slate-100 mr-auto ${botRadius}`;
 
     const timeStyles = isUser
       ? 'text-slate-500 dark:text-emerald-300/60'
@@ -144,15 +203,18 @@ export function ChatBubble({ message }: ChatBubbleProps) {
 
     return (
       <div
-        className={`flex ${isUser ? 'justify-end' : 'justify-start'} animate-slide-up`}
+        className={`flex ${isUser ? 'justify-end' : 'justify-start'} ${isFirstInGroup ? 'animate-slide-up' : ''}`}
         onMouseEnter={() => setHovered(true)}
         onMouseLeave={() => {
           setHovered(false);
         }}
       >
         <div
-          className={`relative max-w-[75%] ${isSticker ? '' : `px-3 py-1.5 rounded-lg shadow-sm ${bubbleStyles}`}`}
+          className={`relative max-w-[75%] ${isSticker ? '' : `px-3 py-1.5 shadow-sm ${bubbleStyles}`}`}
         >
+          {/* WhatsApp tail on first message in group */}
+          {isFirstInGroup && !isSticker && <WhatsAppTail isUser={isUser} />}
+
           {/* Hover actions */}
           {(hovered || showPicker) && (
             <div
@@ -233,15 +295,18 @@ export function ChatBubble({ message }: ChatBubbleProps) {
               mediaType={message.mediaType!}
               mediaUrl={message.mediaUrl!}
               channel={message.channel}
+              transcription={message.transcription}
             />
           )}
 
           {message.content && (
-            <FormattedContent
-              content={message.content}
-              channel={message.channel}
-              role={message.role}
-            />
+            <span className="text-[15px]">
+              <FormattedContent
+                content={message.content}
+                channel={message.channel}
+                role={message.role}
+              />
+            </span>
           )}
 
           {/* Reaction badges */}
@@ -249,56 +314,81 @@ export function ChatBubble({ message }: ChatBubbleProps) {
             <ReactionBadges reactions={reactions} onRemove={handleReactionRemove} />
           )}
 
-          <p
-            className={`text-[10px] mt-0.5 text-right flex items-center justify-end gap-1 ${timeStyles}`}
-          >
-            {time}
-            {isUser && <CheckMarks status="delivered" />}
-            {!isUser && <CheckMarks status={readState} />}
-            {showManualRead && (
-              <button
-                onClick={handleManualRead}
-                className="ml-0.5 text-[9px] font-medium px-1.5 py-0.5 rounded
-                           bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400
-                           hover:bg-blue-200 dark:hover:bg-blue-900/60 transition-colors"
-                title="Mark as read"
-              >
-                Read
-              </button>
-            )}
-          </p>
+          {/* Timestamp — only on last message in group */}
+          {isLastInGroup && (
+            <p
+              className={`text-[11px] mt-0.5 text-right flex items-center justify-end gap-1 ${timeStyles}`}
+            >
+              {time}
+              {isUser && <CheckMarks status="delivered" />}
+              {!isUser && <CheckMarks status={readState} />}
+              {showManualRead && (
+                <button
+                  onClick={handleManualRead}
+                  className="ml-0.5 text-[9px] font-medium px-1.5 py-0.5 rounded
+                             bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400
+                             hover:bg-blue-200 dark:hover:bg-blue-900/60 transition-colors"
+                  title="Mark as read"
+                >
+                  Read
+                </button>
+              )}
+            </p>
+          )}
         </div>
       </div>
     );
   }
 
-  // SMS / iMessage style
+  // --- SMS / iMessage ---
+  const userRadius = isFirstInGroup
+    ? 'rounded-2xl rounded-br-md'
+    : isLastInGroup
+      ? 'rounded-2xl rounded-tr-md'
+      : 'rounded-2xl rounded-r-md';
+  const botRadius = isFirstInGroup
+    ? 'rounded-2xl rounded-bl-md'
+    : isLastInGroup
+      ? 'rounded-2xl rounded-tl-md'
+      : 'rounded-2xl rounded-l-md';
+
   const bubbleStyles = isUser
-    ? 'bg-indigo-500 text-white ml-auto'
-    : 'bg-slate-100 dark:bg-slate-700 text-slate-900 dark:text-slate-100 mr-auto';
+    ? `bg-indigo-500 text-white ml-auto ${userRadius}`
+    : `bg-slate-100 dark:bg-slate-700 text-slate-900 dark:text-slate-100 mr-auto ${botRadius}`;
 
   return (
-    <div className={`flex ${isUser ? 'justify-end' : 'justify-start'} animate-slide-up`}>
-      <div className={`max-w-[75%] px-3.5 py-2 rounded-2xl ${bubbleStyles}`}>
+    <div
+      className={`flex ${isUser ? 'justify-end' : 'justify-start'} ${isFirstInGroup ? 'animate-slide-up' : ''}`}
+    >
+      <div className={`relative max-w-[75%] px-3.5 py-2 ${bubbleStyles}`}>
+        {/* SMS tail on last message in group */}
+        {isLastInGroup && <SmsTail isUser={isUser} />}
+
         {hasMedia && (
           <MediaContent
             mediaType={message.mediaType!}
             mediaUrl={message.mediaUrl!}
             channel={message.channel}
+            transcription={message.transcription}
           />
         )}
         {message.content && (
-          <FormattedContent
-            content={message.content}
-            channel={message.channel}
-            role={message.role}
-          />
+          <span className="text-[15px]">
+            <FormattedContent
+              content={message.content}
+              channel={message.channel}
+              role={message.role}
+            />
+          </span>
         )}
-        <p
-          className={`text-[10px] mt-0.5 ${isUser ? 'text-indigo-200' : 'text-slate-400 dark:text-slate-500'}`}
-        >
-          {time}
-        </p>
+        {/* Timestamp — only on last message in group */}
+        {isLastInGroup && (
+          <p
+            className={`text-[11px] mt-0.5 ${isUser ? 'text-indigo-200' : 'text-slate-400 dark:text-slate-500'}`}
+          >
+            {time}
+          </p>
+        )}
       </div>
     </div>
   );

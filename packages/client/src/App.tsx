@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useWebSocket } from './hooks/useWebSocket';
 import { useStore } from './stores/store';
 import { MessagePanel } from './components/MessagePanel';
@@ -14,6 +14,10 @@ import { ThemeToggle } from './components/ThemeToggle';
 
 type RightTab = 'eval' | 'results' | 'logs';
 
+const MIN_LEFT_WIDTH = 320;
+const MIN_RIGHT_WIDTH = 280;
+const DEFAULT_RIGHT_WIDTH = 480;
+
 export function App() {
   useWebSocket();
 
@@ -23,6 +27,10 @@ export function App() {
   const theme = useStore((s) => s.theme);
   const setReadReceiptMode = useStore((s) => s.setReadReceiptMode);
   const [rightTab, setRightTab] = useState<RightTab>('eval');
+  const [rightPanelOpen, setRightPanelOpen] = useState(() => window.innerWidth >= 1024);
+  const [rightWidth, setRightWidth] = useState(DEFAULT_RIGHT_WIDTH);
+  const dragging = useRef(false);
+  const containerRef = useRef<HTMLDivElement>(null);
 
   const isAutomated = mode === 'automated';
 
@@ -41,6 +49,44 @@ export function App() {
       })
       .catch(() => {});
   }, [setReadReceiptMode]);
+
+  // Auto-close panel on resize to small screen, auto-open on large
+  useEffect(() => {
+    const mq = window.matchMedia('(min-width: 1024px)');
+    const handler = (e: MediaQueryListEvent) => setRightPanelOpen(e.matches);
+    mq.addEventListener('change', handler);
+    return () => mq.removeEventListener('change', handler);
+  }, []);
+
+  // Drag-to-resize handler
+  const onDragStart = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    dragging.current = true;
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+
+    const onMove = (ev: MouseEvent) => {
+      if (!dragging.current || !containerRef.current) return;
+      const containerRect = containerRef.current.getBoundingClientRect();
+      const newRight = containerRect.right - ev.clientX;
+      const clamped = Math.max(
+        MIN_RIGHT_WIDTH,
+        Math.min(newRight, containerRect.width - MIN_LEFT_WIDTH),
+      );
+      setRightWidth(clamped);
+    };
+
+    const onUp = () => {
+      dragging.current = false;
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+    };
+
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  }, []);
 
   return (
     <div className="h-full flex flex-col">
@@ -94,6 +140,28 @@ export function App() {
               />
             </svg>
           </button>
+          {/* Panel toggle */}
+          <button
+            onClick={() => setRightPanelOpen(!rightPanelOpen)}
+            className="p-2 rounded-xl text-slate-500 hover:text-slate-700 dark:text-slate-400
+                       dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800
+                       transition-colors"
+            title={rightPanelOpen ? 'Hide panel' : 'Show panel'}
+          >
+            <svg
+              className={`w-[18px] h-[18px] transition-transform duration-300 ${rightPanelOpen ? '' : 'rotate-180'}`}
+              fill="none"
+              viewBox="0 0 24 24"
+              strokeWidth={1.8}
+              stroke="currentColor"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M3.75 3.75v4.5m0-4.5h4.5m-4.5 0L9 9M3.75 20.25v-4.5m0 4.5h4.5m-4.5 0L9 15M20.25 3.75h-4.5m4.5 0v4.5m0-4.5L15 9m5.25 11.25h-4.5m4.5 0v-4.5m0 4.5L15 15"
+              />
+            </svg>
+          </button>
         </div>
       </header>
 
@@ -101,46 +169,70 @@ export function App() {
       <EvalStatusBar />
 
       {/* Main content */}
-      <div className="flex-1 flex overflow-hidden">
+      <div ref={containerRef} className="flex-1 flex overflow-hidden relative">
         {/* Phone area */}
-        <div className="flex-1 dot-grid">
+        <div className="flex-1 min-w-0 dot-grid">
           <PhoneFrame>
             <MessagePanel readOnly={isAutomated} />
           </PhoneFrame>
         </div>
 
-        {/* Right panel */}
-        <div
-          className="w-[380px] flex flex-col border-l border-slate-200/60 dark:border-slate-700/40
-                      bg-white dark:bg-slate-900"
-        >
-          {isAutomated ? (
-            <>
-              <div className="flex border-b border-slate-200/60 dark:border-slate-700/40">
-                {(['eval', 'results', 'logs'] as const).map((tab) => (
-                  <button
-                    key={tab}
-                    onClick={() => setRightTab(tab)}
-                    className={`flex-1 px-3 py-2.5 text-xs font-semibold uppercase tracking-wider transition-colors ${
-                      rightTab === tab
-                        ? 'text-indigo-600 dark:text-indigo-400 border-b-2 border-indigo-500'
-                        : 'text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300'
-                    }`}
-                  >
-                    {tab}
-                  </button>
-                ))}
-              </div>
-              <div className="flex-1 overflow-hidden">
-                {rightTab === 'eval' && <EvalPanel />}
-                {rightTab === 'results' && <EvalResultsPanel />}
-                {rightTab === 'logs' && <LogPanel />}
-              </div>
-            </>
-          ) : (
-            <LogPanel />
-          )}
-        </div>
+        {/* Mobile backdrop */}
+        {rightPanelOpen && (
+          <div
+            className="lg:hidden fixed inset-0 z-30 bg-black/30 backdrop-blur-sm"
+            onClick={() => setRightPanelOpen(false)}
+          />
+        )}
+
+        {/* Right panel with drag handle */}
+        {rightPanelOpen && (
+          <>
+            {/* Drag handle — desktop only */}
+            <div
+              onMouseDown={onDragStart}
+              className="hidden lg:flex w-1.5 cursor-col-resize items-center justify-center
+                         hover:bg-indigo-500/20 active:bg-indigo-500/30 transition-colors
+                         border-l border-slate-200/60 dark:border-slate-700/40 shrink-0 z-10"
+            >
+              <div className="w-0.5 h-8 rounded-full bg-slate-300 dark:bg-slate-600" />
+            </div>
+
+            <div
+              className="flex flex-col bg-white dark:bg-slate-900
+                          fixed lg:static right-0 top-0 h-full z-40
+                          w-[320px] sm:w-[380px] shrink-0"
+              style={{ width: window.innerWidth >= 1024 ? rightWidth : undefined }}
+            >
+              {isAutomated ? (
+                <>
+                  <div className="flex border-b border-slate-200/60 dark:border-slate-700/40">
+                    {(['eval', 'results', 'logs'] as const).map((tab) => (
+                      <button
+                        key={tab}
+                        onClick={() => setRightTab(tab)}
+                        className={`flex-1 px-3 py-2.5 text-xs font-semibold uppercase tracking-wider transition-colors ${
+                          rightTab === tab
+                            ? 'text-indigo-600 dark:text-indigo-400 border-b-2 border-indigo-500'
+                            : 'text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300'
+                        }`}
+                      >
+                        {tab}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="flex-1 overflow-hidden">
+                    {rightTab === 'eval' && <EvalPanel />}
+                    {rightTab === 'results' && <EvalResultsPanel />}
+                    {rightTab === 'logs' && <LogPanel />}
+                  </div>
+                </>
+              ) : (
+                <LogPanel />
+              )}
+            </div>
+          </>
+        )}
       </div>
     </div>
   );

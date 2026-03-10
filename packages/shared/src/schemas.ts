@@ -236,6 +236,7 @@ export const tmsConfigSchema = z.object({
   logs: z
     .object({
       enabled: z.boolean().default(true),
+      level: z.enum(['debug', 'info', 'warn', 'error']).default('info'),
     })
     .optional(),
   server: z

@@ -34,7 +34,7 @@ export function createServer(config: TmsConfig) {
   });
 
   app.use('/api/message', createMessageRouter(config, broadcast, readReceiptService));
-  app.use('/api/logs', createLogsRouter(broadcast));
+  app.use('/api/logs', createLogsRouter(broadcast, config));
   app.use('/api/eval', createEvalRouter(config, broadcast));
   app.use('/api/config', createConfigRouter(config));
   app.use('/api/whatsapp', createWhatsAppRouter(config, broadcast, readReceiptService));

@@ -12,7 +12,7 @@ import type { BotConfig } from './config.js';
 import { log } from './logger.js';
 import { AppointmentStore } from './store.js';
 import { createTools, createReactionTool } from './tools.js';
-import { buildMediaContent } from './media-processor.js';
+import { buildMediaContent, type MediaProcessResult } from './media-processor.js';
 import { createSendMediaTool, consumePendingMedia } from './media-tools.js';
 
 const registry = createProviderRegistry({ anthropic, openai });
@@ -65,6 +65,7 @@ export interface ChatResult {
   toolResults: ToolResultInfo[];
   mediaType?: string;
   mediaUrl?: string;
+  transcription?: string;
 }
 
 export async function chat(
@@ -77,6 +78,7 @@ export async function chat(
 
   // Build user content — multimodal when media is present
   let userContent: string | Array<TextPart | ImagePart>;
+  let transcription: string | undefined;
 
   if (options?.mediaType && options?.mediaUrl) {
     const metaParts: Array<TextPart | ImagePart> = [];
@@ -89,8 +91,10 @@ export async function chat(
         text: `[Replying to: "${options.quotedReply.quotedBody}"]`,
       });
     }
-    const mediaContent = await buildMediaContent(options.mediaType, options.mediaUrl, message);
-    userContent = [...metaParts, ...mediaContent];
+    log('debug', 'Processing media input', { mediaType: options.mediaType, mediaUrl: options.mediaUrl });
+    const mediaResult = await buildMediaContent(options.mediaType, options.mediaUrl, message);
+    userContent = [...metaParts, ...mediaResult.content];
+    transcription = mediaResult.transcription;
   } else {
     // Original string path — untouched
     const parts: string[] = [];
@@ -126,6 +130,14 @@ export async function chat(
     : config.systemPrompt;
 
   const ch = channel;
+
+  log('debug', 'LLM request', {
+    model: config.model,
+    channel: ch,
+    historyLength: channelHistory.length,
+    systemPromptLength: config.systemPrompt.length,
+  });
+
   const startTime = performance.now();
   const result = await generateText({
     model: registry.languageModel(
@@ -168,6 +180,16 @@ export async function chat(
       (uncached * pricing.input + cached * pricing.cachedInput + outputTokens * pricing.output) /
       1_000_000;
   }
+
+  log('debug', 'LLM response', {
+    model: config.model,
+    latencyMs,
+    promptTokens: result.usage.inputTokens ?? 0,
+    completionTokens: result.usage.outputTokens ?? 0,
+    cachedTokens,
+    cost,
+    responsePreview: text.slice(0, 200),
+  });
 
   // Extract structured data from tool results (last booking/reschedule result)
   let structuredData: Record<string, unknown> | undefined;
@@ -220,6 +242,7 @@ export async function chat(
     toolResults: toolResultInfos,
     ...(structuredData ? { structuredData } : {}),
     ...(pendingMedia ? { mediaType: pendingMedia.mediaType, mediaUrl: pendingMedia.mediaUrl } : {}),
+    ...(transcription ? { transcription } : {}),
   };
 }
 

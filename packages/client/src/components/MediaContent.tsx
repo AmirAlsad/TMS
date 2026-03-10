@@ -7,6 +7,7 @@ interface MediaContentProps {
   mediaType: string;
   mediaUrl: string;
   channel: Channel;
+  transcription?: string | null;
 }
 
 function filenameFromUrl(url: string): string {
@@ -18,8 +19,9 @@ function filenameFromUrl(url: string): string {
   }
 }
 
-export function MediaContent({ mediaType, mediaUrl, channel }: MediaContentProps) {
+export function MediaContent({ mediaType, mediaUrl, channel, transcription }: MediaContentProps) {
   const [lightboxOpen, setLightboxOpen] = useState(false);
+  const [showTranscript, setShowTranscript] = useState(false);
   const category = getMediaCategory(mediaType, channel);
 
   switch (category) {
@@ -47,17 +49,43 @@ export function MediaContent({ mediaType, mediaUrl, channel }: MediaContentProps
 
     case 'audio':
       return (
-        <audio controls className="max-w-[260px]" preload="metadata">
-          <source src={mediaUrl} type={mediaType} />
-          <a
-            href={mediaUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-xs underline text-blue-500"
-          >
-            Download audio
-          </a>
-        </audio>
+        <div className="max-w-[260px]">
+          <audio controls className="w-full" preload="metadata">
+            <source src={mediaUrl} type={mediaType} />
+            <a
+              href={mediaUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-xs underline text-blue-500"
+            >
+              Download audio
+            </a>
+          </audio>
+          {transcription && (
+            <div className="mt-1">
+              <button
+                onClick={() => setShowTranscript(!showTranscript)}
+                className="text-[11px] opacity-60 hover:opacity-90 transition-opacity flex items-center gap-1"
+              >
+                <svg
+                  className={`w-3 h-3 transition-transform ${showTranscript ? 'rotate-90' : ''}`}
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  strokeWidth={2}
+                  stroke="currentColor"
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5" />
+                </svg>
+                Transcript
+              </button>
+              {showTranscript && (
+                <p className="text-[13px] mt-1 opacity-80 italic leading-snug">
+                  {transcription}
+                </p>
+              )}
+            </div>
+          )}
+        </div>
       );
 
     case 'video':

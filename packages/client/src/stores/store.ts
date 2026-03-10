@@ -111,7 +111,17 @@ export const useStore = create<TmsStore>((set, get) => ({
   typingIndicator: null,
   readReceiptMode: 'on_response',
 
-  addMessage: (message) => set((s) => ({ messages: [...s.messages, message] })),
+  addMessage: (message) =>
+    set((s) => {
+      const idx = s.messages.findIndex((m) => m.id === message.id);
+      if (idx >= 0) {
+        // Merge updated fields (e.g. transcription) into existing message
+        const updated = [...s.messages];
+        updated[idx] = { ...updated[idx], ...message };
+        return { messages: updated };
+      }
+      return { messages: [...s.messages, message] };
+    }),
   addLog: (log) => set((s) => ({ logs: [...s.logs, log] })),
   setChannel: (channel) => set({ channel, replyingTo: null, typingIndicator: null }),
   setBotEndpoint: (endpoint) => set({ botEndpoint: endpoint }),

@@ -16,6 +16,7 @@ export interface BotResponse {
   toolResults?: ToolResultInfo[];
   mediaType?: string;
   mediaUrl?: string;
+  transcription?: string;
 }
 
 function extractUsage(data: unknown): TokenUsage | undefined {
@@ -124,6 +125,7 @@ export async function sendToBot(
 
   const mediaType = typeof data.mediaType === 'string' ? data.mediaType : undefined;
   const mediaUrl = typeof data.mediaUrl === 'string' ? data.mediaUrl : undefined;
+  const transcription = typeof data.transcription === 'string' ? data.transcription : undefined;
 
   if (!text && !mediaUrl) {
     throw new Error('Could not extract message from bot response');
@@ -137,6 +139,7 @@ export async function sendToBot(
     toolResults,
     mediaType,
     mediaUrl,
+    transcription,
   };
 }
 
