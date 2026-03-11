@@ -7,6 +7,8 @@ export interface RunOptions {
   parallel?: boolean;
   config?: string;
   suite?: string;
+  runs?: number;
+  checkRegression?: boolean;
 }
 
 export interface SpecResult {

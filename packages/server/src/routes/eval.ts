@@ -10,7 +10,7 @@ import type {
   BotEndpointSummary,
   BatchRun,
 } from '@tms/shared';
-import { evalSpecSchema } from '@tms/shared';
+import { evalSpecSchema, mapWithConcurrency } from '@tms/shared';
 import type { BroadcastFn } from '../ws/handler.js';
 import { runConversation } from '../services/conversation.js';
 import { runHook } from '../services/hooks.js';
@@ -30,6 +30,7 @@ import {
   getBatchRun,
   listBatchRuns,
 } from '../services/batch-runs.js';
+import { getSpecHistory, getAllSpecHistories } from '../services/eval-history.js';
 
 const ZERO_USAGE: TokenUsage = { promptTokens: 0, completionTokens: 0, totalTokens: 0 };
 
@@ -221,6 +222,7 @@ async function runBatch(
   const batchId = generateBatchId();
   const ids = loadedSpecs.map(() => generateSpecEvalId());
 
+  const parallel = !!options.parallel;
   const batchRun: BatchRun = {
     id: batchId,
     label: options.label ?? options.suiteName ?? 'Ad-hoc batch',
@@ -229,10 +231,15 @@ async function runBatch(
     specIds: ids,
     status: 'running',
     startedAt: new Date().toISOString(),
+    parallel,
   };
 
   await saveBatchRun(batchRun);
   broadcast({ type: 'batch:started', payload: batchRun });
+
+  console.log(
+    `Batch "${batchRun.label}" starting ${parallel ? 'parallel' : 'sequential'}, ${loadedSpecs.length} specs`,
+  );
 
   const execute = async () => {
     const run = (spec: EvalSpec, id: string) =>
@@ -240,8 +247,8 @@ async function runBatch(
         console.error(`Batch eval for ${spec.name} failed:`, err),
       );
 
-    if (options.parallel) {
-      await Promise.all(loadedSpecs.map((spec, i) => run(spec, ids[i]!)));
+    if (parallel) {
+      await mapWithConcurrency(loadedSpecs, (spec, i) => run(spec, ids[i]!), 5);
     } else {
       for (let i = 0; i < loadedSpecs.length; i++) {
         await run(loadedSpecs[i]!, ids[i]!);
@@ -319,6 +326,37 @@ export function createEvalRouter(config: TmsConfig, broadcast: BroadcastFn) {
     }
   });
 
+  router.post('/comparative', async (req, res) => {
+    const { spec, runs, parallel } = req.body;
+
+    if (typeof spec !== 'string' || !spec) {
+      res.status(400).json({ error: 'spec must be a non-empty string' });
+      return;
+    }
+
+    const runCount = typeof runs === 'number' ? Math.min(Math.max(Math.round(runs), 2), 20) : 5;
+    const specNames = Array.from({ length: runCount }, () => spec);
+
+    try {
+      const { batchRun, ids } = await runBatch(specNames, config, broadcast, {
+        parallel: !!parallel,
+        label: `Comparative: ${spec} (x${runCount})`,
+      });
+
+      batchRun.comparativeSpec = spec;
+      batchRun.runCount = runCount;
+      await saveBatchRun(batchRun);
+
+      // Re-broadcast updated batch with comparative fields
+      broadcast({ type: 'batch:started', payload: batchRun });
+
+      res.json({ batchId: batchRun.id, ids, spec, runs: runCount });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Unknown error';
+      res.status(400).json({ error: message });
+    }
+  });
+
   router.post('/batch', async (req, res) => {
     const { specs, parallel } = req.body;
 
@@ -379,6 +417,28 @@ export function createEvalRouter(config: TmsConfig, broadcast: BroadcastFn) {
         return;
       }
       res.json(run);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Unknown error';
+      res.status(500).json({ error: message });
+    }
+  });
+
+  router.get('/history', async (req, res) => {
+    try {
+      const window = req.query.window ? Number(req.query.window) : 5;
+      const histories = await getAllSpecHistories(window);
+      res.json({ histories });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Unknown error';
+      res.status(500).json({ error: message });
+    }
+  });
+
+  router.get('/history/:specName', async (req, res) => {
+    try {
+      const window = req.query.window ? Number(req.query.window) : 5;
+      const history = await getSpecHistory(req.params.specName, window);
+      res.json(history);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Unknown error';
       res.status(500).json({ error: message });

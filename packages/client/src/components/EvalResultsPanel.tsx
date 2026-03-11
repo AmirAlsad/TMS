@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useStore } from '../stores/store';
+import { HistoryPanel } from './HistoryPanel';
 import type {
   EvalResult,
   Classification,
@@ -7,6 +8,7 @@ import type {
   TokenUsage,
   BotEndpointSummary,
   BatchRun,
+  ComparativeAggregate,
 } from '@tms/shared';
 
 const classificationColors: Record<Classification, string> = {
@@ -21,13 +23,14 @@ const classificationLabels: Record<Classification, string> = {
   failed: 'Failed',
 };
 
-type ResultsView = 'all' | 'batches';
+type ResultsView = 'all' | 'batches' | 'history';
 
 export function EvalResultsPanel() {
   const evalResults = useStore((s) => s.evalResults);
   const setEvalResults = useStore((s) => s.setEvalResults);
   const batchRuns = useStore((s) => s.batchRuns);
   const setBatchRuns = useStore((s) => s.setBatchRuns);
+  const viewTranscript = useStore((s) => s.viewTranscript);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [view, setView] = useState<ResultsView>('all');
 
@@ -42,13 +45,18 @@ export function EvalResultsPanel() {
     ]).catch(() => {});
   }, [setEvalResults, setBatchRuns]);
 
-  const isEmpty = view === 'all' ? evalResults.length === 0 : batchRuns.length === 0;
+  const isEmpty =
+    view === 'all'
+      ? evalResults.length === 0
+      : view === 'batches'
+        ? batchRuns.length === 0
+        : false; // history handles its own empty state
 
   return (
     <div className="flex flex-col h-full">
       {/* View toggle */}
       <div className="flex border-b border-slate-200/60 dark:border-slate-700/40">
-        {(['all', 'batches'] as const).map((v) => (
+        {(['all', 'batches', 'history'] as const).map((v) => (
           <button
             key={v}
             onClick={() => setView(v)}
@@ -58,12 +66,14 @@ export function EvalResultsPanel() {
                 : 'text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300'
             }`}
           >
-            {v === 'all' ? 'Individual' : 'Batches'}
+            {v === 'all' ? 'Individual' : v === 'batches' ? 'Batches' : 'History'}
           </button>
         ))}
       </div>
 
-      {isEmpty ? (
+      {view === 'history' ? (
+        <HistoryPanel />
+      ) : isEmpty ? (
         <div className="p-4">
           <p className="text-sm text-slate-400 dark:text-slate-500 text-center mt-12">
             {view === 'all' ? 'No eval results yet' : 'No batch runs yet'}
@@ -78,18 +88,30 @@ export function EvalResultsPanel() {
                 result={result}
                 expanded={expandedId === result.id}
                 onToggle={() => setExpandedId(expandedId === result.id ? null : result.id)}
+                onViewTranscript={viewTranscript}
               />
             ))}
           {view === 'batches' &&
-            batchRuns.map((run) => (
-              <BatchRunCard
-                key={run.id}
-                run={run}
-                results={evalResults}
-                expanded={expandedId === run.id}
-                onToggle={() => setExpandedId(expandedId === run.id ? null : run.id)}
-              />
-            ))}
+            batchRuns.map((run) =>
+              run.comparativeSpec ? (
+                <ComparativeRunCard
+                  key={run.id}
+                  run={run}
+                  results={evalResults}
+                  expanded={expandedId === run.id}
+                  onToggle={() => setExpandedId(expandedId === run.id ? null : run.id)}
+                  onViewTranscript={viewTranscript}
+                />
+              ) : (
+                <BatchRunCard
+                  key={run.id}
+                  run={run}
+                  results={evalResults}
+                  expanded={expandedId === run.id}
+                  onToggle={() => setExpandedId(expandedId === run.id ? null : run.id)}
+                />
+              ),
+            )}
         </div>
       )}
     </div>
@@ -193,14 +215,201 @@ function BatchRunCard({
   );
 }
 
+function computeComparativeAggregate(
+  run: BatchRun,
+  results: EvalResult[],
+): ComparativeAggregate | null {
+  const specResults = run.specIds
+    .map((id) => results.find((r) => r.id === id))
+    .filter((r): r is EvalResult => r != null && r.status === 'completed');
+
+  if (specResults.length === 0) return null;
+
+  const passed = specResults.filter((r) => r.classification === 'passed').length;
+  const failed = specResults.filter((r) => r.classification === 'failed').length;
+  const needsReview = specResults.filter((r) => r.classification === 'needs_review').length;
+
+  // Compute per-requirement pass rates
+  const reqMap = new Map<string, { passed: number; total: number }>();
+  for (const r of specResults) {
+    for (const req of r.requirements) {
+      const entry = reqMap.get(req.description) ?? { passed: 0, total: 0 };
+      entry.total++;
+      if (req.classification === 'passed') entry.passed++;
+      reqMap.set(req.description, entry);
+    }
+  }
+
+  return {
+    specName: run.comparativeSpec!,
+    totalRuns: specResults.length,
+    passed,
+    failed,
+    needsReview,
+    passRate: specResults.length > 0 ? passed / specResults.length : 0,
+    requirementPassRates: [...reqMap.entries()].map(([desc, { passed: p, total }]) => ({
+      description: desc,
+      passed: p,
+      total,
+      rate: total > 0 ? p / total : 0,
+    })),
+  };
+}
+
+function ComparativeRunCard({
+  run,
+  results,
+  expanded,
+  onToggle,
+  onViewTranscript,
+}: {
+  run: BatchRun;
+  results: EvalResult[];
+  expanded: boolean;
+  onToggle: () => void;
+  onViewTranscript: (id: string) => void;
+}) {
+  const aggregate = computeComparativeAggregate(run, results);
+  const time = run.completedAt
+    ? new Date(run.completedAt).toLocaleString()
+    : new Date(run.startedAt).toLocaleString();
+
+  const passRateColor =
+    aggregate && aggregate.passRate >= 0.8
+      ? 'text-emerald-600 dark:text-emerald-400'
+      : aggregate && aggregate.passRate >= 0.5
+        ? 'text-amber-600 dark:text-amber-400'
+        : 'text-red-600 dark:text-red-400';
+
+  return (
+    <div className="border-b border-slate-200/60 dark:border-slate-700/40">
+      <button
+        onClick={onToggle}
+        className="w-full px-4 py-3 text-left
+                   hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors"
+      >
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-semibold text-slate-900 dark:text-white">
+              {run.comparativeSpec}
+            </span>
+            <span className="text-[11px] px-1.5 py-0.5 rounded-md font-medium bg-purple-50 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400">
+              comparative
+            </span>
+          </div>
+          {aggregate && (
+            <span className={`text-sm font-bold ${passRateColor}`}>
+              {aggregate.passed}/{aggregate.totalRuns}
+            </span>
+          )}
+        </div>
+        <div className="flex items-center gap-2 mt-1 text-[11px] text-slate-400 dark:text-slate-500">
+          <span>{time}</span>
+          <span>x{run.runCount ?? run.specIds.length} runs</span>
+          {aggregate && (
+            <span className={passRateColor}>
+              {Math.round(aggregate.passRate * 100)}% pass rate
+            </span>
+          )}
+        </div>
+
+        {/* Progress bar */}
+        {aggregate && aggregate.totalRuns > 0 && (
+          <div className="flex w-full h-1.5 rounded-full overflow-hidden mt-2 bg-slate-200 dark:bg-slate-700">
+            {aggregate.passed > 0 && (
+              <div
+                className="bg-emerald-500 h-full"
+                style={{ width: `${(aggregate.passed / aggregate.totalRuns) * 100}%` }}
+              />
+            )}
+            {aggregate.needsReview > 0 && (
+              <div
+                className="bg-amber-500 h-full"
+                style={{ width: `${(aggregate.needsReview / aggregate.totalRuns) * 100}%` }}
+              />
+            )}
+            {aggregate.failed > 0 && (
+              <div
+                className="bg-red-500 h-full"
+                style={{ width: `${(aggregate.failed / aggregate.totalRuns) * 100}%` }}
+              />
+            )}
+          </div>
+        )}
+      </button>
+
+      {expanded && aggregate && (
+        <div className="px-4 pb-3 space-y-3 animate-fade-in">
+          {/* Per-requirement pass rates */}
+          <div>
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500 mb-1.5">
+              Requirement Pass Rates
+            </p>
+            {aggregate.requirementPassRates.map(({ description, passed: p, total, rate }) => (
+              <div key={description} className="flex items-center justify-between py-1 text-sm border-b border-slate-100 dark:border-slate-800 last:border-0">
+                <span className="text-slate-700 dark:text-slate-300 flex-1 mr-2 text-xs">{description}</span>
+                <span className={`text-xs font-semibold shrink-0 ${rate >= 0.8 ? 'text-emerald-600 dark:text-emerald-400' : rate >= 0.5 ? 'text-amber-600 dark:text-amber-400' : 'text-red-600 dark:text-red-400'}`}>
+                  {p}/{total} ({Math.round(rate * 100)}%)
+                </span>
+              </div>
+            ))}
+          </div>
+
+          {/* Individual run results */}
+          <details className="group">
+            <summary className="text-[11px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500 cursor-pointer hover:text-slate-600 dark:hover:text-slate-300">
+              Individual Runs
+            </summary>
+            <div className="mt-1.5 space-y-1">
+              {run.specIds.map((id, i) => {
+                const result = results.find((r) => r.id === id);
+                return (
+                  <div
+                    key={id}
+                    className="flex items-center justify-between py-1.5 text-sm
+                               border-b border-slate-100 dark:border-slate-800 last:border-0"
+                  >
+                    <span className="text-slate-700 dark:text-slate-300">Run {i + 1}</span>
+                    <div className="flex items-center gap-2">
+                      {result?.classification ? (
+                        <span className={`text-[11px] px-2 py-0.5 rounded-full font-semibold ${classificationColors[result.classification]}`}>
+                          {classificationLabels[result.classification]}
+                        </span>
+                      ) : (
+                        <span className="text-[11px] px-2 py-0.5 rounded-full font-semibold bg-slate-100 dark:bg-slate-700 text-slate-500">
+                          {result?.status ?? 'pending'}
+                        </span>
+                      )}
+                      {result?.status === 'completed' && result.transcript.length > 0 && (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); onViewTranscript(id); }}
+                          className="text-[11px] text-indigo-500 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300"
+                        >
+                          View
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </details>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ResultCard({
   result,
   expanded,
   onToggle,
+  onViewTranscript,
 }: {
   result: EvalResult;
   expanded: boolean;
   onToggle: () => void;
+  onViewTranscript: (id: string) => void;
 }) {
   const time = result.completedAt
     ? new Date(result.completedAt).toLocaleString()
@@ -276,6 +485,19 @@ function ResultCard({
               </div>
             </div>
           ))}
+          {result.transcript.length > 0 && result.status === 'completed' && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onViewTranscript(result.id);
+              }}
+              className="w-full mt-2 rounded-lg px-3 py-1.5 text-xs font-semibold
+                         bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400
+                         hover:bg-indigo-100 dark:hover:bg-indigo-800/40 transition-colors"
+            >
+              View Transcript
+            </button>
+          )}
           {result.tokenUsage && <TokenUsageTable usage={result.tokenUsage} />}
           {result.tokenUsage?.botMetrics && (
             <BotMetricsSection metrics={result.tokenUsage.botMetrics} />

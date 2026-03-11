@@ -1,4 +1,4 @@
-import { useRef, useEffect, useState } from 'react';
+import { useRef, useEffect, useState, useCallback } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { useStore } from '../stores/store';
 import { ChatBubble } from './ChatBubble';
@@ -60,7 +60,22 @@ const ATTACHMENT_OPTIONS = [
 ] as const;
 
 export function MessagePanel({ readOnly = false }: MessagePanelProps) {
-  const messages = useStore(useShallow((s) => s.messages.filter((m) => m.channel === s.channel)));
+  const viewingEvalId = useStore((s) => s.viewingEvalId);
+  const exitTranscriptView = useStore((s) => s.exitTranscriptView);
+  const transcriptMessages = useStore(
+    useShallow((s) => {
+      if (s.viewingEvalId) {
+        const result = s.evalResults.find((r) => r.id === s.viewingEvalId);
+        return result?.transcript ?? [];
+      }
+      return s.messages.filter((m) => m.channel === s.channel);
+    }),
+  );
+  const viewingSpecName = useStore((s) => {
+    if (!s.viewingEvalId) return null;
+    return s.evalResults.find((r) => r.id === s.viewingEvalId)?.specName ?? null;
+  });
+  const messages = transcriptMessages;
   const channel = useStore((s) => s.channel);
   const replyingTo = useStore((s) => s.replyingTo);
   const setReplyingTo = useStore((s) => s.setReplyingTo);
@@ -78,6 +93,12 @@ export function MessagePanel({ readOnly = false }: MessagePanelProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [fileAccept, setFileAccept] = useState('');
   const attachMenuRef = useRef<HTMLDivElement>(null);
+  const [recording, setRecording] = useState(false);
+  const [recordingDuration, setRecordingDuration] = useState(0);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const chunksRef = useRef<Blob[]>([]);
+  const recordingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
 
   const isWhatsApp = channel === 'whatsapp';
 
@@ -215,6 +236,7 @@ export function MessagePanel({ readOnly = false }: MessagePanelProps) {
       });
     } catch (err) {
       console.error('Failed to send message:', err);
+      setFileError(err instanceof Error ? err.message : 'Failed to send message');
     } finally {
       setSending(false);
     }
@@ -226,6 +248,98 @@ export function MessagePanel({ readOnly = false }: MessagePanelProps) {
       sendMessage();
     }
   };
+
+  const cleanupRecording = useCallback(() => {
+    if (recordingTimerRef.current) {
+      clearInterval(recordingTimerRef.current);
+      recordingTimerRef.current = null;
+    }
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((t) => t.stop());
+      streamRef.current = null;
+    }
+    mediaRecorderRef.current = null;
+    chunksRef.current = [];
+    setRecording(false);
+    setRecordingDuration(0);
+  }, []);
+
+  const startRecording = useCallback(async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      streamRef.current = stream;
+
+      const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+        ? 'audio/webm;codecs=opus'
+        : 'audio/webm';
+      const recorder = new MediaRecorder(stream, { mimeType });
+      mediaRecorderRef.current = recorder;
+      chunksRef.current = [];
+
+      recorder.ondataavailable = (e) => {
+        if (e.data.size > 0) chunksRef.current.push(e.data);
+      };
+
+      recorder.start();
+      setRecording(true);
+      setRecordingDuration(0);
+      recordingTimerRef.current = setInterval(() => {
+        setRecordingDuration((d) => d + 1);
+      }, 1000);
+    } catch (err) {
+      console.error('Microphone access denied:', err);
+      setFileError('Microphone access denied. Please allow microphone permissions.');
+    }
+  }, []);
+
+  const stopRecording = useCallback(() => {
+    const recorder = mediaRecorderRef.current;
+    if (!recorder || recorder.state === 'inactive') {
+      cleanupRecording();
+      return;
+    }
+
+    recorder.onstop = () => {
+      const blob = new Blob(chunksRef.current, { type: 'audio/webm' });
+      const file = new File([blob], `voice-${Date.now()}.webm`, { type: 'audio/webm' });
+      setAttachment({
+        file,
+        previewUrl: URL.createObjectURL(blob),
+        mediaType: 'audio/webm',
+      });
+      cleanupRecording();
+    };
+    recorder.stop();
+  }, [cleanupRecording]);
+
+  const cancelRecording = useCallback(() => {
+    const recorder = mediaRecorderRef.current;
+    if (recorder && recorder.state !== 'inactive') {
+      recorder.onstop = null;
+      recorder.stop();
+    }
+    cleanupRecording();
+  }, [cleanupRecording]);
+
+  // Cleanup recording on unmount
+  useEffect(() => {
+    return () => {
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+        mediaRecorderRef.current.onstop = null;
+        mediaRecorderRef.current.stop();
+      }
+      if (recordingTimerRef.current) clearInterval(recordingTimerRef.current);
+      if (streamRef.current) streamRef.current.getTracks().forEach((t) => t.stop());
+    };
+  }, []);
+
+  const formatDuration = (seconds: number) => {
+    const m = Math.floor(seconds / 60);
+    const s = seconds % 60;
+    return `${m}:${s.toString().padStart(2, '0')}`;
+  };
+
+  const showMicButton = isWhatsApp && !input.trim() && !attachment && !recording;
 
   const chatBg = isWhatsApp ? 'bg-whatsapp-bg dark:bg-whatsapp-bg-dark' : 'bg-white dark:bg-slate-900';
 
@@ -249,6 +363,22 @@ export function MessagePanel({ readOnly = false }: MessagePanelProps) {
   return (
     <div className="flex flex-col h-full">
       <ChannelHeader channel={channel} />
+
+      {viewingEvalId && viewingSpecName && (
+        <div className="flex items-center justify-between px-3 py-1.5 bg-indigo-50 dark:bg-indigo-900/30 border-b border-indigo-200/60 dark:border-indigo-700/40">
+          <span className="text-xs font-medium text-indigo-600 dark:text-indigo-400">
+            Viewing transcript: {viewingSpecName}
+          </span>
+          <button
+            onClick={exitTranscriptView}
+            className="p-0.5 rounded hover:bg-indigo-100 dark:hover:bg-indigo-800/40 text-indigo-500 dark:text-indigo-400 transition-colors"
+          >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+      )}
 
       <div
         className={`flex-1 overflow-y-auto px-4 py-3 scrollbar-thin ${chatBg}`}
@@ -315,7 +445,7 @@ export function MessagePanel({ readOnly = false }: MessagePanelProps) {
         <div ref={bottomRef} />
       </div>
 
-      {!readOnly && (
+      {!readOnly && !viewingEvalId && (
         <>
           {replyingTo && isWhatsApp && (
             <QuotedReplyPreview message={replyingTo} onCancel={() => setReplyingTo(null)} />
@@ -366,59 +496,66 @@ export function MessagePanel({ readOnly = false }: MessagePanelProps) {
                               : 'bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700'
                           }`}
             >
-              {attachmentCategory === 'image' || attachmentCategory === 'sticker' ? (
-                <img
-                  src={attachment.previewUrl}
-                  alt="Attachment preview"
-                  className="w-16 h-16 object-cover rounded-lg border border-slate-200 dark:border-slate-600"
-                />
-              ) : attachmentCategory === 'video' ? (
-                <video
-                  src={attachment.previewUrl}
-                  className="w-16 h-16 object-cover rounded-lg border border-slate-200 dark:border-slate-600"
-                />
-              ) : (
-                <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600">
-                  <svg
-                    className="w-5 h-5 text-slate-500 dark:text-slate-400 shrink-0"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    strokeWidth={1.5}
-                    stroke="currentColor"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z"
-                    />
-                  </svg>
-                  <span className="text-sm text-slate-700 dark:text-slate-300 truncate max-w-[200px]">
-                    {attachment.file.name}
+              <div className="flex-1 min-w-0">
+                {attachmentCategory === 'image' || attachmentCategory === 'sticker' ? (
+                  <img
+                    src={attachment.previewUrl}
+                    alt="Attachment preview"
+                    className="w-16 h-16 object-cover rounded-lg border border-slate-200 dark:border-slate-600"
+                  />
+                ) : attachmentCategory === 'video' ? (
+                  <video
+                    src={attachment.previewUrl}
+                    className="w-16 h-16 object-cover rounded-lg border border-slate-200 dark:border-slate-600"
+                  />
+                ) : attachmentCategory === 'audio' ? (
+                  <audio
+                    src={attachment.previewUrl}
+                    controls
+                    className="h-8 w-full"
+                  />
+                ) : (
+                  <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600">
+                    <svg
+                      className="w-5 h-5 text-slate-500 dark:text-slate-400 shrink-0"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      strokeWidth={1.5}
+                      stroke="currentColor"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z"
+                      />
+                    </svg>
+                    <span className="text-sm text-slate-700 dark:text-slate-300 truncate max-w-[200px]">
+                      {attachment.file.name}
+                    </span>
+                  </div>
+                )}
+                {captionDisabled && (
+                  <span className="text-xs text-amber-600 dark:text-amber-400 mt-1 block">
+                    Text captions not supported for this media type
                   </span>
-                </div>
-              )}
+                )}
+              </div>
               <button
                 onClick={removeAttachment}
                 className="shrink-0 w-6 h-6 rounded-full flex items-center justify-center
-                           bg-slate-200 dark:bg-slate-600 hover:bg-slate-300 dark:hover:bg-slate-500
-                           text-slate-600 dark:text-slate-300 transition-colors"
+                           text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 transition-colors"
                 aria-label="Remove attachment"
               >
                 <svg
-                  className="w-3.5 h-3.5"
+                  className="w-4 h-4"
                   fill="none"
                   viewBox="0 0 24 24"
                   strokeWidth={2}
                   stroke="currentColor"
                 >
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
+                  <path strokeLinecap="round" strokeLinejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0" />
                 </svg>
               </button>
-              {captionDisabled && (
-                <span className="text-xs text-amber-600 dark:text-amber-400 ml-auto">
-                  Text captions not supported for this media type
-                </span>
-              )}
             </div>
           )}
 
@@ -498,45 +635,96 @@ export function MessagePanel({ readOnly = false }: MessagePanelProps) {
               </div>
             )}
 
-            <input
-              type="text"
-              value={captionDisabled ? '' : input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={handleKeyDown}
-              placeholder={captionDisabled ? 'Captions not supported' : 'Type a message...'}
-              disabled={sending || captionDisabled}
-              className="flex-1 rounded-full px-4 py-2 text-sm
-                         bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100
-                         border border-slate-200 dark:border-slate-600
-                         placeholder:text-slate-400 dark:placeholder:text-slate-500
-                         focus:outline-none focus:ring-2 focus:ring-indigo-400/50 dark:focus:ring-indigo-500/40
-                         disabled:opacity-50 disabled:cursor-not-allowed
-                         transition-shadow"
-            />
-            <button
-              onClick={sendMessage}
-              disabled={sending || (!input.trim() && !attachment)}
-              className={`shrink-0 w-9 h-9 rounded-full flex items-center justify-center
-                         text-white disabled:opacity-40 transition-colors ${
-                           isWhatsApp
-                             ? 'bg-whatsapp-green hover:bg-[#1fbc5a] disabled:hover:bg-whatsapp-green'
-                             : 'bg-indigo-500 hover:bg-indigo-600 disabled:hover:bg-indigo-500'
-                         }`}
-            >
-              <svg
-                className="w-4 h-4"
-                fill="none"
-                viewBox="0 0 24 24"
-                strokeWidth={2}
-                stroke="currentColor"
+            {recording ? (
+              /* Recording UI strip */
+              <div className="flex-1 flex items-center gap-3 px-4 py-2 rounded-full
+                              bg-white dark:bg-slate-700
+                              border border-slate-200 dark:border-slate-600">
+                <button
+                  onClick={cancelRecording}
+                  className="shrink-0 w-7 h-7 rounded-full flex items-center justify-center
+                             text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 transition-colors"
+                  aria-label="Cancel recording"
+                >
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0" />
+                  </svg>
+                </button>
+                <div className="flex items-center gap-2 flex-1">
+                  <span className="w-2.5 h-2.5 rounded-full bg-red-500 animate-pulse" />
+                  <span className="text-sm font-medium text-slate-700 dark:text-slate-300">
+                    {formatDuration(recordingDuration)}
+                  </span>
+                </div>
+                <button
+                  onClick={stopRecording}
+                  className="shrink-0 w-7 h-7 rounded-full flex items-center justify-center
+                             bg-whatsapp-green text-white hover:bg-[#1fbc5a] transition-colors"
+                  aria-label="Stop recording and send"
+                >
+                  <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                    <rect x="6" y="6" width="12" height="12" rx="2" />
+                  </svg>
+                </button>
+              </div>
+            ) : (
+              <input
+                type="text"
+                value={captionDisabled ? '' : input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={handleKeyDown}
+                placeholder={captionDisabled ? 'Captions not supported' : 'Type a message...'}
+                disabled={sending || captionDisabled}
+                className="flex-1 rounded-full px-4 py-2 text-sm
+                           bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100
+                           border border-slate-200 dark:border-slate-600
+                           placeholder:text-slate-400 dark:placeholder:text-slate-500
+                           focus:outline-none focus:ring-2 focus:ring-indigo-400/50 dark:focus:ring-indigo-500/40
+                           disabled:opacity-50 disabled:cursor-not-allowed
+                           transition-shadow"
+              />
+            )}
+            {showMicButton ? (
+              /* Microphone button — WhatsApp, empty input, no attachment, not recording */
+              <button
+                onClick={startRecording}
+                disabled={sending}
+                className="shrink-0 w-9 h-9 rounded-full flex items-center justify-center
+                           text-white bg-whatsapp-green hover:bg-[#1fbc5a]
+                           disabled:opacity-40 transition-colors"
+                aria-label="Record voice message"
               >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  d="M6 12 3.269 3.125A59.769 59.769 0 0 1 21.485 12 59.768 59.768 0 0 1 3.27 20.875L5.999 12Zm0 0h7.5"
-                />
-              </svg>
-            </button>
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 18.75a6 6 0 0 0 6-6v-1.5m-6 7.5a6 6 0 0 1-6-6v-1.5m6 7.5v3.75m-3.75 0h7.5M12 15.75a3 3 0 0 1-3-3V4.5a3 3 0 1 1 6 0v8.25a3 3 0 0 1-3 3Z" />
+                </svg>
+              </button>
+            ) : recording ? null : (
+              /* Send arrow button */
+              <button
+                onClick={sendMessage}
+                disabled={sending || (!input.trim() && !attachment)}
+                className={`shrink-0 w-9 h-9 rounded-full flex items-center justify-center
+                           text-white disabled:opacity-40 transition-colors ${
+                             isWhatsApp
+                               ? 'bg-whatsapp-green hover:bg-[#1fbc5a] disabled:hover:bg-whatsapp-green'
+                               : 'bg-indigo-500 hover:bg-indigo-600 disabled:hover:bg-indigo-500'
+                           }`}
+              >
+                <svg
+                  className="w-4 h-4"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  strokeWidth={2}
+                  stroke="currentColor"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M6 12 3.269 3.125A59.769 59.769 0 0 1 21.485 12 59.768 59.768 0 0 1 3.27 20.875L5.999 12Zm0 0h7.5"
+                  />
+                </svg>
+              </button>
+            )}
           </div>
         </>
       )}

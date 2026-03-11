@@ -3,7 +3,7 @@ import { useStore } from '../stores/store';
 import type { EvalSuite } from '@tms/shared';
 import { BatchProgressPanel } from './BatchProgressPanel';
 
-type RunMode = 'suite' | 'batch' | 'single';
+type RunMode = 'suite' | 'batch' | 'single' | 'comparative';
 
 export function EvalPanel() {
   const evalSpecs = useStore((s) => s.evalSpecs);
@@ -20,9 +20,13 @@ export function EvalPanel() {
   const [suiteDetail, setSuiteDetail] = useState<EvalSuite | null>(null);
   const [selectedSpecs, setSelectedSpecs] = useState<Set<string>>(new Set());
   const [selectedSpec, setSelectedSpec] = useState('');
+  const [comparativeSpec, setComparativeSpec] = useState('');
+  const [comparativeRuns, setComparativeRuns] = useState(5);
   const [parallel, setParallel] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const specHistories = useStore((s) => s.specHistories);
+  const hasRegression = specHistories.some((h) => h.regression);
 
   const isRunning = currentEval?.status === 'running' || activeBatchRun?.status === 'running';
 
@@ -135,6 +139,28 @@ export function EvalPanel() {
     }
   };
 
+  const runComparative = async () => {
+    if (!comparativeSpec) return;
+    setLoading(true);
+    setError('');
+    try {
+      const res = await fetch('/api/eval/comparative', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ spec: comparativeSpec, runs: comparativeRuns, parallel }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setError(data.error ?? `Server returned ${res.status}`);
+      }
+    } catch (err) {
+      setError('Failed to start comparative run');
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const toggleSpec = (spec: string) => {
     setSelectedSpecs((prev) => {
       const next = new Set(prev);
@@ -160,9 +186,21 @@ export function EvalPanel() {
           </button>
         </div>
 
+        {/* Regression warning banner */}
+        {hasRegression && (
+          <div className="rounded-lg px-3 py-2 bg-red-50 dark:bg-red-900/20 border border-red-200/60 dark:border-red-700/40">
+            <p className="text-xs font-semibold text-red-600 dark:text-red-400">
+              Regression detected in {specHistories.filter((h) => h.regression).length} spec(s)
+            </p>
+            <p className="text-[11px] text-red-500 dark:text-red-400/70 mt-0.5">
+              Check the History tab in Results for details.
+            </p>
+          </div>
+        )}
+
         {/* Mode tabs */}
         <div className="flex rounded-lg bg-slate-100 dark:bg-slate-800 p-0.5">
-          {(['suite', 'batch', 'single'] as const).map((mode) => (
+          {(['suite', 'batch', 'single', 'comparative'] as const).map((mode) => (
             <button
               key={mode}
               onClick={() => setRunMode(mode)}
@@ -362,6 +400,72 @@ export function EvalPanel() {
                     {loading ? 'Starting...' : 'Run Eval'}
                   </button>
                 )}
+              </>
+            )}
+          </div>
+        )}
+
+        {/* Comparative mode */}
+        {runMode === 'comparative' && (
+          <div className="space-y-3">
+            {evalSpecs.length === 0 ? (
+              <p className="text-sm text-slate-400 dark:text-slate-500">
+                No eval specs found. Add YAML specs to the evals/ directory.
+              </p>
+            ) : (
+              <>
+                <select
+                  value={comparativeSpec}
+                  onChange={(e) => setComparativeSpec(e.target.value)}
+                  disabled={isRunning}
+                  className="w-full rounded-lg px-3 py-2 text-sm
+                             bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100
+                             border border-slate-200 dark:border-slate-700
+                             focus:outline-none focus:ring-2 focus:ring-indigo-400/50
+                             disabled:opacity-50 cursor-pointer transition-shadow"
+                >
+                  <option value="">Select a spec...</option>
+                  {evalSpecs.map((spec) => (
+                    <option key={spec} value={spec}>
+                      {spec}
+                    </option>
+                  ))}
+                </select>
+
+                <div className="flex items-center gap-3">
+                  <label className="text-sm text-slate-600 dark:text-slate-400 shrink-0">Runs:</label>
+                  <input
+                    type="number"
+                    min={2}
+                    max={20}
+                    value={comparativeRuns}
+                    onChange={(e) => setComparativeRuns(Math.min(20, Math.max(2, Number(e.target.value))))}
+                    disabled={isRunning}
+                    className="w-20 rounded-lg px-3 py-1.5 text-sm
+                               bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100
+                               border border-slate-200 dark:border-slate-700
+                               focus:outline-none focus:ring-2 focus:ring-indigo-400/50
+                               disabled:opacity-50 transition-shadow"
+                  />
+                  <span className="text-[11px] text-slate-400 dark:text-slate-500">(2-20)</span>
+                </div>
+
+                <ParallelToggle
+                  parallel={parallel}
+                  setParallel={setParallel}
+                  disabled={isRunning}
+                />
+
+                <button
+                  onClick={runComparative}
+                  disabled={!comparativeSpec || isRunning || loading}
+                  className="w-full rounded-lg px-4 py-2 text-sm font-semibold
+                             bg-indigo-500 hover:bg-indigo-600 text-white
+                             disabled:opacity-40 disabled:hover:bg-indigo-500
+                             transition-colors"
+                >
+                  {loading ? 'Starting...' : `Run Comparative (x${comparativeRuns})`}
+                </button>
               </>
             )}
           </div>

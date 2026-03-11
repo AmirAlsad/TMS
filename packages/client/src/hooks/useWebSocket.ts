@@ -26,6 +26,7 @@ export function useWebSocket() {
   const setEvalResult = useStore((s) => s.setEvalResult);
   const startBatchRun = useStore((s) => s.startBatchRun);
   const completeBatchRun = useStore((s) => s.completeBatchRun);
+  const setSpecHistories = useStore((s) => s.setSpecHistories);
   const setReadState = useStore((s) => s.setReadState);
   const addReaction = useStore((s) => s.addReaction);
   const removeReaction = useStore((s) => s.removeReaction);
@@ -33,6 +34,14 @@ export function useWebSocket() {
 
   useEffect(() => {
     let closed = false;
+
+    const refreshHistory = () => {
+      fetch('/api/eval/history')
+        .then((res) => (res.ok ? res.json() : { histories: [] }))
+        .then((data) => setSpecHistories(data.histories ?? []))
+        .catch(() => {});
+    };
+
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const wsUrl = `${protocol}//${window.location.host}/ws`;
     const ws = new WebSocket(wsUrl);
@@ -65,6 +74,7 @@ export function useWebSocket() {
           break;
         case 'eval:result':
           setEvalResult(msg.payload as EvalResult);
+          refreshHistory();
           break;
         case 'batch:started':
           startBatchRun(msg.payload as BatchRun);
@@ -115,6 +125,7 @@ export function useWebSocket() {
     setEvalResult,
     startBatchRun,
     completeBatchRun,
+    setSpecHistories,
     setReadState,
     addReaction,
     removeReaction,

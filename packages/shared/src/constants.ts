@@ -26,6 +26,7 @@ export const SUPPORTED_MEDIA_TYPES: Record<string, MediaCategory> = {
   'audio/ogg': 'audio',
   'audio/aac': 'audio',
   'audio/mpeg': 'audio',
+  'audio/webm': 'audio',
   'video/mp4': 'video',
   'application/pdf': 'document',
   'application/msword': 'document',

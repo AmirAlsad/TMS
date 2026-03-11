@@ -218,6 +218,9 @@ export const batchRunSchema = z.object({
   status: z.enum(['running', 'completed', 'failed']),
   startedAt: z.string(),
   completedAt: z.string().optional(),
+  parallel: z.boolean().optional(),
+  comparativeSpec: z.string().optional(),
+  runCount: z.number().int().positive().optional(),
 });
 
 export const tmsConfigSchema = z.object({

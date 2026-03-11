@@ -42,7 +42,8 @@ export function printSummaryTable(results: SpecResult[]): void {
     const reqPassed = evalResult.requirements.filter((r) => r.classification === 'passed').length;
     const duration = chalk.dim(formatDuration(durationMs));
 
-    console.log(`  ${name}  ${classification}  ${reqPassed}/${reqTotal} requirements  ${duration}`);
+    const errorTag = evalResult.error ? ' ' + chalk.red('ERROR') : '';
+    console.log(`  ${name}  ${classification}${errorTag}  ${reqPassed}/${reqTotal} requirements  ${duration}`);
   }
 
   console.log(chalk.dim('─'.repeat(80)));
@@ -102,6 +103,67 @@ function printTranscript(messages: Message[]): void {
     const role = msg.role === 'user' ? chalk.blue('USER') : chalk.magenta('BOT ');
     console.log(`    ${role}: ${msg.content}`);
   }
+}
+
+function wordWrap(text: string, width: number, indent: string): string {
+  const words = text.split(/\s+/);
+  const lines: string[] = [];
+  let current = '';
+  for (const word of words) {
+    if (current && current.length + 1 + word.length > width) {
+      lines.push(current);
+      current = word;
+    } else {
+      current = current ? current + ' ' + word : word;
+    }
+  }
+  if (current) lines.push(current);
+  return lines.join('\n' + indent);
+}
+
+export function printFailureDetails(results: SpecResult[]): void {
+  const nonPassing = results.filter(
+    (r) => r.evalResult.classification && r.evalResult.classification !== 'passed',
+  );
+  if (nonPassing.length === 0) return;
+
+  console.log();
+  console.log(chalk.bold('Failure Details'));
+
+  for (const result of nonPassing) {
+    const { evalResult } = result;
+    console.log(chalk.bold(`── ${evalResult.specName} ──`));
+
+    if (evalResult.error) {
+      console.log(chalk.red(`  Error: ${evalResult.error}`));
+    }
+
+    const actionable = evalResult.requirements.filter(
+      (r) => r.classification === 'failed' || r.classification === 'needs_review',
+    );
+    for (const req of actionable) {
+      const icon =
+        req.classification === 'failed' ? chalk.red('[FAIL]') : chalk.yellow('[REVIEW]');
+      console.log(`  ${icon} ${req.description}`);
+      if (req.reasoning) {
+        const indent = '         ';
+        const wrapped = wordWrap(req.reasoning, 90, indent);
+        console.log(chalk.dim(`${indent}${wrapped}`));
+      }
+    }
+
+    console.log();
+  }
+}
+
+export function printResultPaths(results: SpecResult[]): void {
+  if (results.length === 0) return;
+
+  console.log(chalk.dim('Results saved to:'));
+  for (const result of results) {
+    console.log(chalk.dim(`  eval-results/${result.evalResult.id}.json`));
+  }
+  console.log();
 }
 
 export function writeJsonReport(report: RunReport, outputPath: string): void {

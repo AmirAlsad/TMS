@@ -7,6 +7,7 @@ import type {
   ReadStatus,
   ReadReceiptMode,
   BatchRun,
+  SpecHistory,
 } from '@tms/shared';
 
 export type AppMode = 'playground' | 'automated';
@@ -45,6 +46,13 @@ interface TmsStore {
   activeBatchRun: BatchRun | null;
   batchRuns: BatchRun[];
 
+  // Transcript replay state
+  viewingEvalId: string | null;
+  preReplayChannel: Channel | null;
+
+  // History state
+  specHistories: SpecHistory[];
+
   // WhatsApp state
   messageReadStates: Record<string, ReadStatus>;
   messageReactions: Record<string, { emoji: string; fromUser: boolean }[]>;
@@ -69,6 +77,13 @@ interface TmsStore {
   setEvalResult: (result: EvalResult) => void;
   setEvalResults: (results: EvalResult[]) => void;
   clearEval: () => void;
+
+  // Transcript replay actions
+  viewTranscript: (evalId: string) => void;
+  exitTranscriptView: () => void;
+
+  // History actions
+  setSpecHistories: (histories: SpecHistory[]) => void;
 
   // Suite & batch actions
   setEvalSuites: (suites: string[]) => void;
@@ -103,6 +118,13 @@ export const useStore = create<TmsStore>((set, get) => ({
   evalSuites: [],
   activeBatchRun: null,
   batchRuns: [],
+
+  // Transcript replay state
+  viewingEvalId: null,
+  preReplayChannel: null,
+
+  // History state
+  specHistories: [],
 
   // WhatsApp state
   messageReadStates: {},
@@ -154,7 +176,7 @@ export const useStore = create<TmsStore>((set, get) => ({
     get().setTheme(next);
   },
 
-  setMode: (mode) => set({ mode }),
+  setMode: (mode) => set({ mode, viewingEvalId: null, preReplayChannel: null }),
   setEvalSpecs: (specs) => set({ evalSpecs: specs }),
   startEval: (eval_) =>
     set((s) => ({
@@ -176,6 +198,27 @@ export const useStore = create<TmsStore>((set, get) => ({
     })),
   setEvalResults: (results) => set({ evalResults: results }),
   clearEval: () => set({ currentEval: null }),
+
+  // Transcript replay actions
+  viewTranscript: (evalId) =>
+    set((s) => {
+      const result = s.evalResults.find((r) => r.id === evalId);
+      if (!result || result.transcript.length === 0) return s;
+      return {
+        viewingEvalId: evalId,
+        preReplayChannel: s.channel,
+        channel: result.transcript[0]!.channel,
+      };
+    }),
+  exitTranscriptView: () =>
+    set((s) => ({
+      viewingEvalId: null,
+      channel: s.preReplayChannel ?? s.channel,
+      preReplayChannel: null,
+    })),
+
+  // History actions
+  setSpecHistories: (histories) => set({ specHistories: histories }),
 
   // Suite & batch actions
   setEvalSuites: (suites) => set({ evalSuites: suites }),

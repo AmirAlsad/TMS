@@ -160,6 +160,40 @@ export interface BatchRun {
   status: BatchRunStatus;
   startedAt: string;
   completedAt?: string;
+  parallel?: boolean;
+  comparativeSpec?: string;
+  runCount?: number;
+}
+
+export interface ComparativeAggregate {
+  specName: string;
+  totalRuns: number;
+  passed: number;
+  failed: number;
+  needsReview: number;
+  passRate: number;
+  requirementPassRates: Array<{
+    description: string;
+    passed: number;
+    total: number;
+    rate: number;
+  }>;
+}
+
+export type Trend = 'improving' | 'stable' | 'declining';
+
+export interface SpecHistory {
+  specName: string;
+  results: Array<{
+    id: string;
+    classification?: Classification;
+    completedAt?: string;
+  }>;
+  passRate: number;
+  recentPassRate: number;
+  previousPassRate: number;
+  regression: boolean;
+  trend: Trend;
 }
 
 export interface JudgeConfig {

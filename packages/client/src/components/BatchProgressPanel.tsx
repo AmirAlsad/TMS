@@ -34,6 +34,11 @@ export function BatchProgressPanel() {
             {label}
           </h3>
           <StatusBadge status={activeBatchRun.status} />
+          {activeBatchRun.parallel && (
+            <span className="inline-flex items-center rounded-full bg-indigo-100 px-2 py-0.5 text-[10px] font-medium text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300">
+              parallel
+            </span>
+          )}
         </div>
         <div className="flex items-center gap-2">
           <span className="text-[11px] text-slate-400 dark:text-slate-500">

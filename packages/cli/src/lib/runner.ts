@@ -1,4 +1,5 @@
 import type { TmsConfig, EvalSpec, EvalResult, Classification, BatchRun } from '@tms/shared';
+import { mapWithConcurrency } from '@tms/shared';
 import {
   runConversation,
   runHook,
@@ -110,6 +111,7 @@ export async function runSpecs(
   let results: SpecResult[];
 
   // Create a BatchRun record when running multiple specs
+  const parallel = !!options.parallel && specs.length > 1;
   let batchRun: BatchRun | undefined;
   if (specs.length > 1) {
     const batchId = generateBatchId();
@@ -121,13 +123,20 @@ export async function runSpecs(
       specIds: specs.map(({ spec }) => `${generateEvalId()}_${spec.name}`),
       status: 'running',
       startedAt,
+      parallel,
     };
     await saveBatchRun(batchRun);
   }
 
-  if (options.parallel && specs.length > 1) {
-    results = await Promise.all(
-      specs.map(({ spec, specPath }) => runSingleSpec(spec, specPath, config, batchRun?.id)),
+  console.log(
+    `Running ${specs.length} spec(s) ${parallel ? 'parallel' : 'sequential'}`,
+  );
+
+  if (parallel) {
+    results = await mapWithConcurrency(
+      specs,
+      ({ spec, specPath }) => runSingleSpec(spec, specPath, config, batchRun?.id),
+      5,
     );
   } else {
     results = [];
