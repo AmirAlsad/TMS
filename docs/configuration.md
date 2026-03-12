@@ -36,6 +36,8 @@ bot:
 | `bot.endpoint` | `string` | `http://localhost:3000/chat` | URL of your bot's chat endpoint. |
 | `bot.method` | `string` | `"POST"` | HTTP method used to call the bot endpoint. |
 | `bot.headers` | `Record<string, string>` | `{}` | Custom headers sent with every bot request. |
+| `bot.timeoutMs` | `number` | `60000` | Request timeout in milliseconds for bot endpoint calls. |
+| `bot.retries` | `number` | `2` | Number of retries on bot endpoint failure. |
 
 ### `userBot` (optional)
 
@@ -59,12 +61,34 @@ Configuration for the LLM judge that evaluates transcripts.
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `logs.enabled` | `boolean` | `true` | Enable or disable the log ingestion endpoint. |
+| `logs.level` | `"debug"` \| `"info"` \| `"warn"` \| `"error"` | `"info"` | Minimum log level for eval logging output. |
 
 ### `server` (optional)
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `server.port` | `number` | `4000` | Port for the TMS server. |
+| `server.maxConcurrentEvals` | `number` | `3` | Global maximum number of evals that can run simultaneously. |
+| `server.maxConcurrency` | `number` | `5` | Maximum concurrent evals within a single batch run. |
+
+### `pricing` (optional)
+
+Per-model cost rates for estimating eval costs. Keys are model strings (e.g., `anthropic:claude-haiku-4-5-20251001`), values have `input` and `output` fields in dollars per million tokens.
+
+```yaml
+pricing:
+  anthropic:claude-haiku-4-5-20251001:
+    input: 0.80
+    output: 4.00
+  anthropic:claude-sonnet-4-20250514:
+    input: 3.00
+    output: 15.00
+  openai:gpt-4o:
+    input: 2.50
+    output: 10.00
+```
+
+See `GET /api/eval/costs` in the [API Reference](api-reference.md) for cost analytics.
 
 ### `whatsapp` (optional)
 
@@ -99,6 +123,8 @@ bot:
   headers:
     Authorization: Bearer ${BOT_API_KEY}
     X-Custom-Header: my-value
+  timeoutMs: 60000                 # Request timeout (default: 60000)
+  retries: 2                       # Retries on failure (default: 2)
 
 userBot:
   model: anthropic:claude-haiku-4-5-20251001   # provider:model format
@@ -111,9 +137,12 @@ judge:
 
 logs:
   enabled: true
+  level: info                      # debug | info | warn | error (default: info)
 
 server:
   port: 4000
+  maxConcurrentEvals: 3            # Global eval concurrency cap (default: 3)
+  maxConcurrency: 5                # Max concurrent evals in a batch (default: 5)
 
 whatsapp:
   readReceipts:
@@ -126,4 +155,12 @@ whatsapp:
     voiceNoteAssets:
       - ./assets/voice-greeting.ogg
       - ./assets/voice-question.ogg
+
+pricing:                           # Per-model cost rates ($/million tokens)
+  anthropic:claude-haiku-4-5-20251001:
+    input: 0.80
+    output: 4.00
+  anthropic:claude-sonnet-4-20250514:
+    input: 3.00
+    output: 15.00
 ```

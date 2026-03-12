@@ -6,6 +6,7 @@ import { ChannelHeader } from './ChannelHeader';
 import { QuotedReplyPreview } from './QuotedReplyPreview';
 import { TypingIndicator } from './TypingIndicator';
 import { MAX_MEDIA_SIZE, getMediaCategory } from '@tms/shared';
+import type { Message } from '@tms/shared';
 
 interface MessagePanelProps {
   readOnly?: boolean;
@@ -99,6 +100,67 @@ export function MessagePanel({ readOnly = false }: MessagePanelProps) {
   const chunksRef = useRef<Blob[]>([]);
   const recordingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
+
+  // Transcript replay state
+  const [replayActive, setReplayActive] = useState(false);
+  const [replayIndex, setReplayIndex] = useState(0);
+  const replayTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const getTimeDelta = (msg1: Message, msg2: Message): number => {
+    return new Date(msg2.timestamp).getTime() - new Date(msg1.timestamp).getTime();
+  };
+
+  const formatTimeDelta = (ms: number): string => {
+    if (ms < 1000) return `${ms}ms`;
+    return `${(ms / 1000).toFixed(1)}s`;
+  };
+
+  const totalDuration =
+    messages.length >= 2
+      ? new Date(messages[messages.length - 1]!.timestamp).getTime() -
+        new Date(messages[0]!.timestamp).getTime()
+      : 0;
+
+  const startReplay = () => {
+    setReplayActive(true);
+    setReplayIndex(0);
+  };
+
+  const stopReplay = () => {
+    setReplayActive(false);
+    setReplayIndex(0);
+    if (replayTimerRef.current) {
+      clearTimeout(replayTimerRef.current);
+      replayTimerRef.current = null;
+    }
+  };
+
+  // Drive replay animation
+  useEffect(() => {
+    if (!replayActive || !viewingEvalId) return;
+    if (replayIndex >= messages.length) {
+      setReplayActive(false);
+      return;
+    }
+    if (replayIndex === 0) {
+      setReplayIndex(1);
+      return;
+    }
+    const delta = Math.min(getTimeDelta(messages[replayIndex - 1]!, messages[replayIndex]!), 5000);
+    replayTimerRef.current = setTimeout(() => {
+      setReplayIndex((i) => i + 1);
+    }, delta);
+    return () => {
+      if (replayTimerRef.current) clearTimeout(replayTimerRef.current);
+    };
+  }, [replayActive, replayIndex, messages, viewingEvalId]);
+
+  // Cleanup replay timer on unmount
+  useEffect(() => {
+    return () => {
+      if (replayTimerRef.current) clearTimeout(replayTimerRef.current);
+    };
+  }, []);
 
   const isWhatsApp = channel === 'whatsapp';
 
@@ -238,7 +300,8 @@ export function MessagePanel({ readOnly = false }: MessagePanelProps) {
       console.error('Failed to send message:', err);
       setFileError(err instanceof Error ? err.message : 'Failed to send message');
     } finally {
-      setSending(false);
+      // Keep sending disabled for 500ms minimum to prevent spam
+      setTimeout(() => setSending(false), 500);
     }
   };
 
@@ -351,13 +414,16 @@ export function MessagePanel({ readOnly = false }: MessagePanelProps) {
     !!attachmentCategory &&
     ['video', 'audio', 'document', 'contact'].includes(attachmentCategory);
 
-  // Compute grouping for messages
-  const groupedMessages = messages.map((msg, i) => {
-    const prev = i > 0 ? messages[i - 1] : null;
-    const next = i < messages.length - 1 ? messages[i + 1] : null;
+  // Compute grouping for messages (use displayMessages for replay support)
+  const displayMessages =
+    viewingEvalId && replayActive ? messages.slice(0, replayIndex) : messages;
+
+  const groupedMessages = displayMessages.map((msg, i) => {
+    const prev = i > 0 ? displayMessages[i - 1] : null;
+    const next = i < displayMessages.length - 1 ? displayMessages[i + 1] : null;
     const isFirstInGroup = !prev || prev.role !== msg.role;
     const isLastInGroup = !next || next.role !== msg.role;
-    return { msg, isFirstInGroup, isLastInGroup };
+    return { msg, isFirstInGroup, isLastInGroup, prev };
   });
 
   return (
@@ -366,17 +432,52 @@ export function MessagePanel({ readOnly = false }: MessagePanelProps) {
 
       {viewingEvalId && viewingSpecName && (
         <div className="flex items-center justify-between px-3 py-1.5 bg-indigo-50 dark:bg-indigo-900/30 border-b border-indigo-200/60 dark:border-indigo-700/40">
-          <span className="text-xs font-medium text-indigo-600 dark:text-indigo-400">
-            Viewing transcript: {viewingSpecName}
-          </span>
-          <button
-            onClick={exitTranscriptView}
-            className="p-0.5 rounded hover:bg-indigo-100 dark:hover:bg-indigo-800/40 text-indigo-500 dark:text-indigo-400 transition-colors"
-          >
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
-            </svg>
-          </button>
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-medium text-indigo-600 dark:text-indigo-400">
+              Viewing transcript: {viewingSpecName}
+            </span>
+            {totalDuration > 0 && (
+              <span className="text-[10px] text-indigo-400 dark:text-indigo-500">
+                ({formatTimeDelta(totalDuration)} total)
+              </span>
+            )}
+          </div>
+          <div className="flex items-center gap-1">
+            {!replayActive ? (
+              <button
+                onClick={startReplay}
+                disabled={messages.length < 2}
+                className="p-0.5 rounded hover:bg-indigo-100 dark:hover:bg-indigo-800/40 text-indigo-500 dark:text-indigo-400 transition-colors disabled:opacity-30"
+                title="Play replay"
+              >
+                <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                  <path d="M8 5v14l11-7z" />
+                </svg>
+              </button>
+            ) : (
+              <button
+                onClick={stopReplay}
+                className="p-0.5 rounded hover:bg-indigo-100 dark:hover:bg-indigo-800/40 text-indigo-500 dark:text-indigo-400 transition-colors"
+                title="Stop replay"
+              >
+                <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                  <rect x="6" y="5" width="4" height="14" />
+                  <rect x="14" y="5" width="4" height="14" />
+                </svg>
+              </button>
+            )}
+            <button
+              onClick={() => {
+                stopReplay();
+                exitTranscriptView();
+              }}
+              className="p-0.5 rounded hover:bg-indigo-100 dark:hover:bg-indigo-800/40 text-indigo-500 dark:text-indigo-400 transition-colors"
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
         </div>
       )}
 
@@ -431,13 +532,28 @@ export function MessagePanel({ readOnly = false }: MessagePanelProps) {
           </div>
         )}
         <div className="space-y-0.5">
-          {groupedMessages.map(({ msg, isFirstInGroup, isLastInGroup }, i) => (
-            <div key={msg.id} className={isFirstInGroup && i > 0 ? 'pt-1.5' : ''}>
-              <ChatBubble
-                message={msg}
-                isFirstInGroup={isFirstInGroup}
-                isLastInGroup={isLastInGroup}
-              />
+          {groupedMessages.map(({ msg, isFirstInGroup, isLastInGroup, prev }, i) => (
+            <div key={msg.id}>
+              {viewingEvalId && isFirstInGroup && prev && prev.role !== msg.role && (() => {
+                const delta = getTimeDelta(prev, msg);
+                if (delta > 0) {
+                  return (
+                    <div className="flex items-center justify-center py-1">
+                      <span className="text-[10px] text-slate-400 dark:text-slate-500 bg-slate-100/80 dark:bg-slate-800/80 px-2 py-0.5 rounded-full">
+                        {msg.role === 'bot' ? `Bot responded in ${formatTimeDelta(delta)}` : formatTimeDelta(delta)}
+                      </span>
+                    </div>
+                  );
+                }
+                return null;
+              })()}
+              <div className={isFirstInGroup && i > 0 && !(viewingEvalId && prev && prev.role !== msg.role) ? 'pt-1.5' : ''}>
+                <ChatBubble
+                  message={msg}
+                  isFirstInGroup={isFirstInGroup}
+                  isLastInGroup={isLastInGroup}
+                />
+              </div>
             </div>
           ))}
         </div>
@@ -710,19 +826,26 @@ export function MessagePanel({ readOnly = false }: MessagePanelProps) {
                                : 'bg-indigo-500 hover:bg-indigo-600 disabled:hover:bg-indigo-500'
                            }`}
               >
-                <svg
-                  className="w-4 h-4"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  strokeWidth={2}
-                  stroke="currentColor"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    d="M6 12 3.269 3.125A59.769 59.769 0 0 1 21.485 12 59.768 59.768 0 0 1 3.27 20.875L5.999 12Zm0 0h7.5"
-                  />
-                </svg>
+                {sending ? (
+                  <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                  </svg>
+                ) : (
+                  <svg
+                    className="w-4 h-4"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    strokeWidth={2}
+                    stroke="currentColor"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      d="M6 12 3.269 3.125A59.769 59.769 0 0 1 21.485 12 59.768 59.768 0 0 1 3.27 20.875L5.999 12Zm0 0h7.5"
+                    />
+                  </svg>
+                )}
               </button>
             )}
           </div>

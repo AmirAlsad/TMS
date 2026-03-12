@@ -20,6 +20,7 @@ import {
 import { UserBot } from './user-bot.js';
 import { ReadReceiptService } from './read-receipt.js';
 import type { EvalLogFn } from './eval-logger.js';
+import { saveCheckpoint, deleteCheckpoint } from './eval-results.js';
 
 const WAIT_DELAY_MS = 5_000;
 const MAX_CONSECUTIVE_WAITS = 3;
@@ -163,6 +164,7 @@ export async function runConversation(
   evalSpec: EvalSpec,
   broadcast: BroadcastFn,
   log?: EvalLogFn,
+  evalId?: string,
 ): Promise<ConversationResult> {
   if (!config.userBot) {
     throw new Error('userBot configuration is required to run automated conversations');
@@ -195,6 +197,12 @@ export async function runConversation(
     let consecutiveWaits = 0;
 
     for (let turn = 0; turn < evalSpec.turnLimit; turn++) {
+      if (turn === 0) {
+        log?.('debug', 'User bot system prompt rendered', {
+          systemPrompt: userBot.getSystemPrompt(evalSpec),
+        });
+      }
+
       log?.('debug', `Turn ${turn + 1} starting`, { turn: turn + 1, turnLimit: evalSpec.turnLimit });
       const turnUbUsage: TokenUsage = { ...ZERO_USAGE };
 
@@ -204,6 +212,13 @@ export async function runConversation(
         const reply = await userBot.generateReply(transcript, evalSpec, events);
         actions = reply.actions;
         addToAccum(turnUbUsage, reply.usage);
+
+        if (reply.reasoning) {
+          log?.('debug', `User bot reasoning: ${reply.reasoning.slice(0, 500)}`, {
+            reasoning: reply.reasoning,
+            source: 'user-bot',
+          });
+        }
 
         // Check if it's a pure wait
         const isWaitOnly = actions.length === 1 && actions[0]!.type === 'wait';
@@ -298,9 +313,25 @@ export async function runConversation(
         // Non-message actions only (e.g., just a reaction) — no bot call this turn
         turnUsages.push({ turn, userBot: turnUbUsage });
       }
+
+      // Save checkpoint after each turn
+      if (evalId) {
+        await saveCheckpoint(evalId, {
+          transcript,
+          events: isWhatsApp ? events : undefined,
+          turn: turn + 1,
+          turnUsages,
+          userBotTotal,
+          goalCompleted,
+        });
+      }
     }
 
     readReceiptService?.destroy();
+
+    if (evalId) {
+      await deleteCheckpoint(evalId);
+    }
 
     return {
       transcript,

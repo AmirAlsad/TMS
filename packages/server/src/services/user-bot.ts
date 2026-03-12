@@ -330,7 +330,7 @@ export class UserBot {
     transcript: Message[],
     evalSpec: EvalSpec,
     events: WhatsAppEvent[] = [],
-  ): Promise<{ actions: UserBotAction[]; usage: TokenUsage }> {
+  ): Promise<{ actions: UserBotAction[]; usage: TokenUsage; reasoning?: string }> {
     const systemPrompt = buildSystemPrompt(evalSpec, this.config.systemPrompt);
     const messages = buildTranscriptMessages(transcript, events);
     const tools = buildToolSet(evalSpec);
@@ -376,6 +376,13 @@ export class UserBot {
       }
     }
 
-    return { actions, usage };
+    // Capture LLM reasoning text (may contain chain-of-thought alongside tool calls)
+    const reasoning = result.text || undefined;
+
+    return { actions, usage, reasoning };
+  }
+
+  getSystemPrompt(evalSpec: EvalSpec): string {
+    return buildSystemPrompt(evalSpec, this.config.systemPrompt);
   }
 }

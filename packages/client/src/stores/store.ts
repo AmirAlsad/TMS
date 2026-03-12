@@ -60,6 +60,9 @@ interface TmsStore {
   typingIndicator: { active: boolean; role: 'user' | 'bot' } | null;
   readReceiptMode: ReadReceiptMode;
 
+  connectionStatus: 'connecting' | 'connected' | 'disconnected';
+  setConnectionStatus: (status: 'connecting' | 'connected' | 'disconnected') => void;
+
   addMessage: (message: Message) => void;
   addLog: (log: LogEntry) => void;
   setChannel: (channel: Channel) => void;
@@ -132,6 +135,9 @@ export const useStore = create<TmsStore>((set, get) => ({
   replyingTo: null,
   typingIndicator: null,
   readReceiptMode: 'on_response',
+
+  connectionStatus: 'connecting',
+  setConnectionStatus: (status) => set({ connectionStatus: status }),
 
   addMessage: (message) =>
     set((s) => {

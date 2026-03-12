@@ -67,6 +67,8 @@ export async function sendToBot(
   callbackUrl?: string,
 ): Promise<BotResponse> {
   const { endpoint, method = 'POST', headers = {} } = config.bot;
+  const timeoutMs = config.bot.timeoutMs ?? 60000;
+  const maxRetries = config.bot.retries ?? 2;
 
   const body: Record<string, unknown> = {
     message: message.content,
@@ -87,17 +89,68 @@ export async function sendToBot(
     body.callbackUrl = callbackUrl;
   }
 
-  const response = await fetch(endpoint, {
-    method,
-    headers: {
-      'Content-Type': 'application/json',
-      ...headers,
-    },
-    body: JSON.stringify(body),
-  });
+  const RETRYABLE_STATUS_CODES = new Set([429, 502, 503, 504]);
+  const NON_RETRYABLE_STATUS_CODES = new Set([400, 401, 404]);
 
-  if (!response.ok) {
-    throw new Error(`Bot returned ${response.status}: ${await response.text()}`);
+  let lastError: Error | undefined;
+  let response: Response | undefined;
+
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      response = await fetch(endpoint, {
+        method,
+        headers: {
+          'Content-Type': 'application/json',
+          ...headers,
+        },
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(timeoutMs),
+      });
+
+      if (response.ok) {
+        break;
+      }
+
+      // Don't retry client errors
+      if (NON_RETRYABLE_STATUS_CODES.has(response.status)) {
+        throw new Error(`Bot returned ${response.status}: ${await response.text()}`);
+      }
+
+      // Retry on retryable status codes
+      if (RETRYABLE_STATUS_CODES.has(response.status)) {
+        lastError = new Error(`Bot returned ${response.status}: ${await response.text()}`);
+        if (attempt < maxRetries) {
+          const delayMs = 1000 * Math.pow(2, attempt);
+          console.warn(
+            `[tms] Bot returned ${response.status}, retrying in ${delayMs}ms (attempt ${attempt + 1}/${maxRetries})`,
+          );
+          await new Promise((resolve) => setTimeout(resolve, delayMs));
+          continue;
+        }
+        throw lastError;
+      }
+
+      // Non-retryable, non-client error
+      throw new Error(`Bot returned ${response.status}: ${await response.text()}`);
+    } catch (err) {
+      // Network errors (TypeError) and timeouts are retryable
+      if (err instanceof TypeError || (err instanceof DOMException && err.name === 'TimeoutError')) {
+        lastError = err instanceof Error ? err : new Error(String(err));
+        if (attempt < maxRetries) {
+          const delayMs = 1000 * Math.pow(2, attempt);
+          console.warn(
+            `[tms] Bot request failed (${lastError.message}), retrying in ${delayMs}ms (attempt ${attempt + 1}/${maxRetries})`,
+          );
+          await new Promise((resolve) => setTimeout(resolve, delayMs));
+          continue;
+        }
+      }
+      throw err;
+    }
+  }
+
+  if (!response || !response.ok) {
+    throw lastError ?? new Error('Bot request failed after retries');
   }
 
   const data = await response.json();
@@ -167,8 +220,14 @@ export async function sendStatusCallback(
         timestamp: new Date().toISOString(),
       }),
     });
-  } catch {
+  } catch (err) {
     // Status callbacks are fire-and-forget; don't break the flow if the endpoint rejects them
+    console.warn('[tms] Status callback failed:', {
+      endpoint,
+      messageId,
+      status,
+      error: (err as Error).message ?? String(err),
+    });
   }
 }
 
@@ -233,7 +292,13 @@ export async function sendReactionCallback(
       mediaType,
       mediaUrl,
     };
-  } catch {
+  } catch (err) {
+    console.warn('[tms] Reaction callback failed:', {
+      endpoint,
+      emoji: reaction.emoji,
+      targetMessageId: reaction.targetMessageId,
+      error: (err as Error).message ?? String(err),
+    });
     return null;
   }
 }

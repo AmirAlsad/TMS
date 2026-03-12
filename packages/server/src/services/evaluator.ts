@@ -16,6 +16,7 @@ export interface JudgeInput {
   specName: string;
   specDescription?: string;
   events?: WhatsAppEvent[];
+  judgeInstructions?: string;
 }
 
 export interface JudgeOutput {
@@ -85,7 +86,7 @@ function buildPrompt(input: JudgeInput): { system: string; user: string } {
 
   const requirementsList = input.requirements.map((r, i) => `${i + 1}. ${r}`).join('\n');
 
-  const system = `You are a QA judge evaluating a conversation between a user and a bot.
+  let system = `You are a QA judge evaluating a conversation between a user and a bot.
 You will be given a conversation transcript and a list of requirements.
 For each requirement, classify it as one of: "passed", "needs_review", or "failed".
 Provide brief reasoning for each classification.
@@ -110,6 +111,10 @@ Respond with ONLY valid JSON in this exact format:
     }
   ]
 }`;
+
+  if (input.judgeInstructions) {
+    system += `\n\nAdditional instructions for this evaluation:\n${input.judgeInstructions}`;
+  }
 
   const user = `## Eval Spec: ${input.specName}
 ${input.specDescription ? `${input.specDescription}\n` : ''}

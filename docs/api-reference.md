@@ -143,13 +143,23 @@ The eval runs asynchronously. Poll `GET /api/eval/:id` or listen on WebSocket fo
 
 ### POST /api/eval/batch
 
-Run multiple evals sequentially by spec name.
+Run multiple evals sequentially or in parallel by spec name.
 
 **Request body:**
 
 ```json
-{ "specs": ["whatsapp-appointment-booking", "whatsapp-multi-option"] }
+{
+  "specs": ["whatsapp-appointment-booking", "whatsapp-multi-option"],
+  "parallel": true,
+  "maxConcurrency": 3
+}
 ```
+
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `specs` | `string[]` | Yes | -- | Spec names to run. |
+| `parallel` | `boolean` | No | `false` | Run specs concurrently. |
+| `maxConcurrency` | `number` | No | `5` | Max concurrent evals when `parallel` is true. |
 
 **Response:** `200`
 
@@ -160,10 +170,267 @@ Run multiple evals sequentially by spec name.
 ```bash
 curl -X POST http://localhost:4000/api/eval/batch \
   -H "Content-Type: application/json" \
-  -d '{"specs": ["whatsapp-appointment-booking", "whatsapp-multi-option"]}'
+  -d '{"specs": ["whatsapp-appointment-booking", "whatsapp-multi-option"], "parallel": true}'
 ```
 
 **Errors:** `400` if `specs` is not a non-empty array of strings.
+
+---
+
+### GET /api/eval/suites
+
+List available eval suites from the `evals/suites/` directory.
+
+**Response:** `200`
+
+```json
+{ "suites": ["smoke-tests", "full-regression"] }
+```
+
+```bash
+curl http://localhost:4000/api/eval/suites
+```
+
+---
+
+### GET /api/eval/suites/:name
+
+Get a specific suite definition.
+
+**Response:** `200`
+
+```json
+{
+  "name": "smoke-tests",
+  "description": "Quick smoke tests for core features",
+  "specs": ["example", "cancel-appointment"]
+}
+```
+
+```bash
+curl http://localhost:4000/api/eval/suites/smoke-tests
+```
+
+**Errors:** `404` if the suite is not found.
+
+---
+
+### POST /api/eval/suite/:name
+
+Run all specs in a named suite.
+
+**Request body (optional):**
+
+```json
+{ "parallel": true }
+```
+
+**Response:** `200`
+
+```json
+{ "batchId": "batch-abc123", "ids": ["eval-1", "eval-2"] }
+```
+
+```bash
+curl -X POST http://localhost:4000/api/eval/suite/smoke-tests \
+  -H "Content-Type: application/json" \
+  -d '{"parallel": true}'
+```
+
+**Errors:** `404` if the suite is not found.
+
+---
+
+### POST /api/eval/comparative
+
+Run multiple instances of one spec for comparison. Useful for measuring pass rate reliability.
+
+**Request body:**
+
+```json
+{
+  "spec": "whatsapp-appointment-booking",
+  "runs": 5
+}
+```
+
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `spec` | `string` | Yes | -- | Spec name to run. |
+| `runs` | `number` | No | `3` | Number of times to run (2–20). |
+
+**Response:** `200`
+
+```json
+{ "batchId": "batch-abc123", "ids": ["eval-1", "eval-2", "eval-3", "eval-4", "eval-5"] }
+```
+
+```bash
+curl -X POST http://localhost:4000/api/eval/comparative \
+  -H "Content-Type: application/json" \
+  -d '{"spec": "whatsapp-appointment-booking", "runs": 5}'
+```
+
+---
+
+### GET /api/eval/batches
+
+List all batch runs.
+
+**Response:** `200`
+
+```json
+{
+  "batches": [
+    {
+      "id": "batch-abc123",
+      "label": "whatsapp-appointment-booking x5",
+      "status": "completed",
+      "evalIds": ["eval-1", "eval-2", "eval-3"],
+      "parallel": false
+    }
+  ]
+}
+```
+
+```bash
+curl http://localhost:4000/api/eval/batches
+```
+
+---
+
+### GET /api/eval/batches/:id
+
+Get a specific batch run by ID.
+
+**Response:** `200` with a `BatchRun` object.
+
+```bash
+curl http://localhost:4000/api/eval/batches/batch-abc123
+```
+
+**Errors:** `404` if the batch ID is not found.
+
+---
+
+### GET /api/eval/history
+
+Get pass rate trends for all specs.
+
+**Query parameters:**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `window` | `number` | `5` | Number of recent runs to consider. |
+
+**Response:** `200`
+
+```json
+{
+  "histories": {
+    "example": {
+      "passRate": 0.8,
+      "recentPassRate": 0.6,
+      "trend": "declining",
+      "regression": true,
+      "results": [...]
+    }
+  }
+}
+```
+
+```bash
+curl http://localhost:4000/api/eval/history?window=10
+```
+
+---
+
+### GET /api/eval/history/:specName
+
+Get history for a specific spec with trend detection.
+
+**Response:** `200` with a `SpecHistory` object including `passRate`, `recentPassRate`, `trend` (`improving`/`stable`/`declining`), and `regression` flag.
+
+```bash
+curl http://localhost:4000/api/eval/history/example
+```
+
+**Errors:** `404` if no history exists for the spec.
+
+---
+
+### GET /api/eval/baselines
+
+List all baseline results by spec.
+
+**Response:** `200`
+
+```json
+{
+  "baselines": {
+    "example": "eval-2026-03-10_14-30-00",
+    "cancel-appointment": "eval-2026-03-09_10-00-00"
+  }
+}
+```
+
+```bash
+curl http://localhost:4000/api/eval/baselines
+```
+
+---
+
+### POST /api/eval/:id/baseline
+
+Set an eval result as the baseline for its spec. Future regression detection compares against this baseline.
+
+**Response:** `200`
+
+```json
+{ "ok": true, "specName": "example", "baselineId": "eval-abc123" }
+```
+
+```bash
+curl -X POST http://localhost:4000/api/eval/eval-abc123/baseline
+```
+
+**Errors:** `404` if the eval ID is not found.
+
+---
+
+### GET /api/eval/costs
+
+Get aggregated cost analytics across all eval results.
+
+**Response:** `200`
+
+```json
+{
+  "specs": {
+    "example": {
+      "runs": 5,
+      "promptTokens": 15000,
+      "completionTokens": 3000,
+      "totalTokens": 18000,
+      "estimatedCost": 0.45
+    }
+  },
+  "totals": {
+    "runs": 10,
+    "promptTokens": 30000,
+    "completionTokens": 6000,
+    "totalTokens": 36000,
+    "estimatedCost": 0.90
+  },
+  "pricingAvailable": true
+}
+```
+
+Cost estimates require the `pricing` config. If not configured, token counts are still reported but `estimatedCost` is omitted.
+
+```bash
+curl http://localhost:4000/api/eval/costs
+```
 
 ---
 

@@ -249,6 +249,22 @@ Loads YAML eval spec files from the `evals/` directory (relative to project root
 
 Saves eval results as JSON files in an `eval-results/` directory. Generates timestamp-based IDs (`YYYY-MM-DD_HH-MM-SS`). Provides `save`, `get`, and `list` operations.
 
+### eval-history.ts -- Eval History & Regression Detection
+
+Tracks per-spec pass rates over time, computes trends (`improving`/`stable`/`declining`), detects regressions, and manages baselines. Baselines are stored in `eval-results/baselines.json`.
+
+### batch-runs.ts -- Batch Run Persistence
+
+Persists batch run metadata (label, status, spec IDs, parallel flag) to `eval-results/batches/`. Tracks comparative runs and suite executions.
+
+### suite-loader.ts -- Eval Suite Loading
+
+Loads eval suites from YAML files in `evals/suites/`. Each suite defines a list of spec names to run together.
+
+### eval-logger.ts -- Eval Logging
+
+Creates scoped logger functions that broadcast `log:entry` WebSocket messages with level filtering based on config.
+
 ## Route Structure
 
 All routes use the factory pattern -- each file exports a `create*Router(config, broadcast, ...)` function.
@@ -264,6 +280,18 @@ All routes use the factory pattern -- each file exports a `create*Router(config,
 | `/api/eval` | GET | `createEvalRouter` | List all eval results |
 | `/api/config` | GET | `createConfigRouter` | Get current config |
 | `/api/config` | PUT | `createConfigRouter` | Update config at runtime |
+| `/api/eval/suites` | GET | `createEvalRouter` | List available eval suites |
+| `/api/eval/suites/:name` | GET | `createEvalRouter` | Get a specific suite definition |
+| `/api/eval/suite/:name` | POST | `createEvalRouter` | Run all specs in a suite |
+| `/api/eval/comparative` | POST | `createEvalRouter` | Run multiple instances of one spec |
+| `/api/eval/batches` | GET | `createEvalRouter` | List all batch runs |
+| `/api/eval/batches/:id` | GET | `createEvalRouter` | Get a specific batch run |
+| `/api/eval/history` | GET | `createEvalRouter` | Get pass rate trends for all specs |
+| `/api/eval/history/:specName` | GET | `createEvalRouter` | Get history for a specific spec |
+| `/api/eval/baselines` | GET | `createEvalRouter` | List all baseline results |
+| `/api/eval/:id/baseline` | POST | `createEvalRouter` | Set an eval result as baseline |
+| `/api/eval/costs` | GET | `createEvalCostsRouter` | Aggregated cost analytics |
+| `/api/eval-assets/*` | GET | static | Serve eval spec assets (images, docs, contacts) |
 | `/api/media` | POST | `createMediaRouter` | Upload a media file (WhatsApp) |
 | `/api/media/:filename` | GET | `createMediaRouter` | Serve an uploaded media file |
 | `/api/whatsapp/reaction` | POST | `createWhatsAppRouter` | Add a reaction |
@@ -295,6 +323,8 @@ interface WsMessage<T = unknown> {
 | `whatsapp:read_receipt` | `WhatsAppReadReceipt` | Server -> Client | A message was read |
 | `whatsapp:typing_start` | `WhatsAppTypingEvent` | Server -> Client | Someone started typing |
 | `whatsapp:typing_stop` | `WhatsAppTypingEvent` | Server -> Client | Someone stopped typing |
+| `batch:started` | `BatchRun` | Server -> Client | A batch run has started |
+| `batch:completed` | `BatchRun` | Server -> Client | A batch run has finished |
 
 The `broadcast` function (`ws/handler.ts`) iterates over all connected WebSocket clients and sends the message to each one with `readyState === OPEN`.
 
@@ -307,7 +337,7 @@ All types live in `@tms/shared`. Zod schemas in `schemas.ts` mirror the TypeScri
 - **`Message`** -- A conversation message with `id`, `role` (user/bot), `content`, `channel`, `timestamp`. Optional fields for WhatsApp: `quotedReply`, `mediaType`, `mediaUrl`, `transcription`, `readStatus`. Optional fields for tool visibility: `toolCalls`, `toolResults`.
 - **`Channel`** -- `'sms' | 'whatsapp'`
 - **`LogEntry`** -- A structured log with `timestamp`, `level`, `source`, `message`, and optional `data` record.
-- **`TmsConfig`** -- Top-level configuration: `bot` (endpoint, method, headers), optional `userBot` (model, systemPrompt), optional `judge` (model), optional `logs`, optional `server` (port).
+- **`TmsConfig`** -- Top-level configuration: `bot` (endpoint, method, headers, timeoutMs, retries), optional `userBot` (model, systemPrompt), optional `judge` (model), optional `logs` (enabled, level), optional `server` (port, maxConcurrency, maxConcurrentEvals), optional `whatsapp`, optional `pricing` (per-model input/output costs).
 
 ### Eval Types
 
@@ -320,6 +350,14 @@ All types live in `@tms/shared`. Zod schemas in `schemas.ts` mirror the TypeScri
 - **`UserBotAction`** -- Discriminated union of actions the user bot can take: `send_message`, `react_to_message`, `remove_reaction`, `reply_to_message`, `send_voice_note`, `wait`.
 - **`WhatsAppEvent`** -- Union of `WhatsAppReaction`, `WhatsAppReadReceipt`, `WhatsAppTypingEvent`.
 - **`ReadReceiptMode`** -- `'auto_delay' | 'manual' | 'on_response'`
+
+### Eval Orchestration Types
+
+- **`EvalSuite`** -- A named collection of spec names to run together, loaded from `evals/suites/`.
+- **`BatchRun`** -- Container for parallel/sequential spec executions with label, status, parallel flag, and optionally `comparativeSpec` and `runCount`.
+- **`SpecHistory`** -- Pass rate tracking per spec: results, passRate, recentPassRate, trend, regression flag.
+- **`Trend`** -- `'improving' | 'stable' | 'declining'`
+- **`ComparativeAggregate`** -- Summary of multiple runs of the same spec with pass/fail/needsReview counts and per-requirement pass rates.
 
 ### Usage Tracking Types
 

@@ -1,6 +1,6 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import type { EvalResult } from '@tms/shared';
+import type { EvalResult, Message, WhatsAppEvent, TurnUsage, TokenUsage } from '@tms/shared';
 import { findProjectRoot } from './project-root.js';
 
 const RESULTS_DIR = path.resolve(findProjectRoot(), 'eval-results');
@@ -38,7 +38,7 @@ export async function listEvalResults(): Promise<EvalResult[]> {
     const results: EvalResult[] = [];
 
     for (const file of files) {
-      if (!file.endsWith('.json')) continue;
+      if (!file.endsWith('.json') || file.endsWith('.checkpoint.json')) continue;
       const content = await fs.readFile(path.join(RESULTS_DIR, file), 'utf-8');
       results.push(JSON.parse(content) as EvalResult);
     }
@@ -47,5 +47,49 @@ export async function listEvalResults(): Promise<EvalResult[]> {
     return results;
   } catch {
     return [];
+  }
+}
+
+export async function saveCheckpoint(
+  evalId: string,
+  data: {
+    transcript: Message[];
+    events?: WhatsAppEvent[];
+    turn: number;
+    turnUsages: TurnUsage[];
+    userBotTotal: TokenUsage;
+    goalCompleted: boolean;
+  },
+): Promise<void> {
+  await ensureDir();
+  const filePath = path.join(RESULTS_DIR, `${evalId}.checkpoint.json`);
+  await fs.writeFile(filePath, JSON.stringify(data, null, 2), 'utf-8');
+}
+
+export async function loadCheckpoint(
+  evalId: string,
+): Promise<{
+  transcript: Message[];
+  events?: WhatsAppEvent[];
+  turn: number;
+  turnUsages: TurnUsage[];
+  userBotTotal: TokenUsage;
+  goalCompleted: boolean;
+} | null> {
+  const filePath = path.join(RESULTS_DIR, `${evalId}.checkpoint.json`);
+  try {
+    const content = await fs.readFile(filePath, 'utf-8');
+    return JSON.parse(content);
+  } catch {
+    return null;
+  }
+}
+
+export async function deleteCheckpoint(evalId: string): Promise<void> {
+  const filePath = path.join(RESULTS_DIR, `${evalId}.checkpoint.json`);
+  try {
+    await fs.unlink(filePath);
+  } catch {
+    // Ignore if not found
   }
 }

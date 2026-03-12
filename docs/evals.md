@@ -270,12 +270,31 @@ tms run example -c path/to/tms.config.yaml
 | 1 | At least one eval failed |
 | 2 | At least one eval needs review (none failed) |
 
+**Additional CLI flags:**
+
+| Flag | Description |
+|------|-------------|
+| `-s, --suite <name>` | Run a named suite from `evals/suites/` |
+| `--runs <n>` | Repeat each spec N times for comparative runs (2–20) |
+| `--check-regression` | Check for regressions after running |
+
+**Exit codes:**
+
+| Code | Meaning |
+|------|---------|
+| 0 | All evals passed |
+| 1 | At least one eval failed |
+| 2 | At least one eval needs review (none failed) |
+| 3 | Regression detected (with `--check-regression`) |
+
 ### REST API
 
 You can also trigger evals via HTTP:
 
 - **`POST /api/eval/run`** -- Run a single eval spec
-- **`POST /api/eval/batch`** -- Run multiple eval specs sequentially
+- **`POST /api/eval/batch`** -- Run multiple eval specs sequentially or in parallel
+- **`POST /api/eval/suite/:name`** -- Run all specs in a named suite
+- **`POST /api/eval/comparative`** -- Run multiple instances of one spec for comparison
 
 See [API Reference](api-reference.md) for request/response details.
 
@@ -321,3 +340,115 @@ judge:
 The user bot and judge can use different providers. A smaller, cheaper model works well for user simulation, while a more capable model improves judge accuracy.
 
 See [Configuration](configuration.md) for all config options.
+
+## Eval Suites
+
+Suites group related eval specs for batch execution. Suite files live in `evals/suites/` as YAML:
+
+```yaml
+# evals/suites/smoke-tests.yaml
+name: smoke-tests
+description: Quick smoke tests for core booking features
+specs:
+  - example
+  - cancel-appointment
+  - reschedule-appointment
+```
+
+Run a suite via CLI or API:
+
+```bash
+# CLI
+tms run --suite smoke-tests
+
+# API
+curl -X POST http://localhost:4000/api/eval/suite/smoke-tests \
+  -H "Content-Type: application/json" \
+  -d '{"parallel": true}'
+```
+
+## Comparative Runs
+
+Run the same spec multiple times to measure reliability:
+
+```bash
+# CLI -- run each spec 5 times
+tms run example --runs 5
+
+# API
+curl -X POST http://localhost:4000/api/eval/comparative \
+  -H "Content-Type: application/json" \
+  -d '{"spec": "example", "runs": 5}'
+```
+
+Results show per-spec pass rates (e.g., `example: 4/5 (80%)`). The `--runs` flag accepts values from 2 to 20.
+
+## History & Regression Detection
+
+TMS tracks pass rates over time for each spec. After running evals, you can check for regressions:
+
+```bash
+# CLI -- run evals then check for regressions
+tms run example cancel-appointment --check-regression
+
+# API -- view history
+curl http://localhost:4000/api/eval/history
+curl http://localhost:4000/api/eval/history/example
+```
+
+### Trends
+
+Each spec's history includes a `trend` field: `improving`, `stable`, or `declining`, computed from recent pass rates.
+
+### Baselines
+
+Set a known-good eval result as a baseline. Regression detection compares recent results against the baseline:
+
+```bash
+# Set a baseline
+curl -X POST http://localhost:4000/api/eval/eval-abc123/baseline
+
+# View all baselines
+curl http://localhost:4000/api/eval/baselines
+```
+
+### Regression Exit Code
+
+When `--check-regression` is used, the CLI exits with code `3` if any spec shows a regression (recent pass rate significantly lower than previous). This integrates naturally into CI pipelines.
+
+## Cost Tracking
+
+TMS tracks token usage and estimates costs across all eval runs. Configure per-model pricing in your config:
+
+```yaml
+# tms.config.yaml
+pricing:
+  anthropic:claude-haiku-4-5-20251001:
+    input: 0.80    # $ per million input tokens
+    output: 4.00   # $ per million output tokens
+  anthropic:claude-sonnet-4-20250514:
+    input: 3.00
+    output: 15.00
+```
+
+View costs via the API:
+
+```bash
+curl http://localhost:4000/api/eval/costs
+```
+
+Returns per-spec and total token counts with estimated costs (if pricing is configured).
+
+## Batch Runs
+
+Run multiple specs in a single batch, optionally in parallel:
+
+```bash
+# Sequential (default)
+tms run example cancel-appointment reschedule-appointment
+
+# Parallel (up to 5 concurrent)
+tms run example cancel-appointment reschedule-appointment --parallel
+```
+
+Concurrency is controlled by `server.maxConcurrency` in the config (default: 5) and capped by `server.maxConcurrentEvals` (default: 3).

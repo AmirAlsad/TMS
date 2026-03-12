@@ -1,8 +1,44 @@
+import fs from 'node:fs/promises';
+import path from 'node:path';
 import type { SpecHistory, Trend, Classification } from '@tms/shared';
 import { listEvalResults } from './eval-results.js';
+import { findProjectRoot } from './project-root.js';
+
+const RESULTS_DIR = path.resolve(findProjectRoot(), 'eval-results');
+const BASELINES_PATH = path.join(RESULTS_DIR, 'baselines.json');
+
+async function loadBaselines(): Promise<Record<string, string>> {
+  try {
+    const content = await fs.readFile(BASELINES_PATH, 'utf-8');
+    return JSON.parse(content) as Record<string, string>;
+  } catch {
+    return {};
+  }
+}
+
+async function saveBaselines(baselines: Record<string, string>): Promise<void> {
+  await fs.mkdir(RESULTS_DIR, { recursive: true });
+  await fs.writeFile(BASELINES_PATH, JSON.stringify(baselines, null, 2), 'utf-8');
+}
+
+export async function setBaseline(specName: string, evalId: string): Promise<void> {
+  const baselines = await loadBaselines();
+  baselines[specName] = evalId;
+  await saveBaselines(baselines);
+}
+
+export async function getBaseline(specName: string): Promise<string | null> {
+  const baselines = await loadBaselines();
+  return baselines[specName] ?? null;
+}
+
+export async function getAllBaselines(): Promise<Record<string, string>> {
+  return loadBaselines();
+}
 
 export async function getSpecHistory(specName: string, window = 5): Promise<SpecHistory> {
   const allResults = await listEvalResults();
+  const baselines = await loadBaselines();
   const specResults = allResults
     .filter((r) => r.specName === specName && r.status === 'completed')
     .sort((a, b) => new Date(a.startedAt).getTime() - new Date(b.startedAt).getTime());
@@ -28,7 +64,16 @@ export async function getSpecHistory(specName: string, window = 5): Promise<Spec
   const previousPassRate = previousResults.length > 0 ? previousPassed / previousResults.length : 0;
 
   // Regression heuristic
-  const regression = detectRegression(recentPassRate, previousPassRate);
+  let regression = detectRegression(recentPassRate, previousPassRate);
+
+  // Enhanced regression detection: also compare against baseline
+  const baselineId = baselines[specName];
+  if (baselineId && !regression) {
+    const baselineResult = allResults.find((r) => r.id === baselineId);
+    if (baselineResult?.classification === 'passed' && recentPassRate < 0.8) {
+      regression = true;
+    }
+  }
 
   // Trend
   const trend = computeTrend(recentPassRate, previousPassRate);
@@ -46,6 +91,7 @@ export async function getSpecHistory(specName: string, window = 5): Promise<Spec
 
 export async function getAllSpecHistories(window = 5): Promise<SpecHistory[]> {
   const allResults = await listEvalResults();
+  const baselines = await loadBaselines();
   const specNames = [...new Set(allResults.map((r) => r.specName))];
 
   const histories: SpecHistory[] = [];
@@ -75,13 +121,24 @@ export async function getAllSpecHistories(window = 5): Promise<SpecHistory[]> {
     const previousPassRate =
       previousResults.length > 0 ? previousPassed / previousResults.length : 0;
 
+    let regression = detectRegression(recentPassRate, previousPassRate);
+
+    // Enhanced regression detection: also compare against baseline
+    const baselineId = baselines[name];
+    if (baselineId && !regression) {
+      const baselineResult = allResults.find((r) => r.id === baselineId);
+      if (baselineResult?.classification === 'passed' && recentPassRate < 0.8) {
+        regression = true;
+      }
+    }
+
     histories.push({
       specName: name,
       results,
       passRate,
       recentPassRate,
       previousPassRate,
-      regression: detectRegression(recentPassRate, previousPassRate),
+      regression,
       trend: computeTrend(recentPassRate, previousPassRate),
     });
   }

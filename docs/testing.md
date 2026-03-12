@@ -116,6 +116,7 @@ Use the CLI exit codes to integrate evals into CI pipelines:
 | 0 | All evals passed |
 | 1 | At least one eval failed |
 | 2 | At least one eval needs review (none failed) |
+| 3 | Regression detected (with `--check-regression`) |
 
 Example in a CI script:
 
@@ -208,6 +209,9 @@ Use both approaches for comprehensive coverage:
 | JSON output to stdout | `tms run <name> --json` |
 | Save JSON report | `tms run <name> --output report.json` |
 | Run evals concurrently | `tms run <names...> --parallel` |
+| Run a suite | `tms run --suite <name>` |
+| Comparative runs | `tms run <name> --runs 5` |
+| Check for regressions | `tms run <names...> --check-regression` |
 | Custom config | `tms run <name> -c path/to/config.yaml` |
 | Type check all packages | `pnpm typecheck` |
 | Lint all packages | `pnpm lint` |

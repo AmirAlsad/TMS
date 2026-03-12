@@ -105,8 +105,11 @@ tms run <specs...> [options]
 | `--verbose` | Show detailed transcript output |
 | `-c, --config <path>` | Path to config file |
 | `--parallel` | Run specs concurrently |
+| `-s, --suite <name>` | Run a named suite from `evals/suites/` |
+| `--runs <n>` | Repeat each spec N times for comparative runs |
+| `--check-regression` | Check for regressions after running |
 
-Exit codes: `0` = passed, `1` = failed, `2` = needs_review.
+Exit codes: `0` = passed, `1` = failed, `2` = needs_review, `3` = regression detected.
 
 ## Bot Endpoint Contract
 
@@ -160,12 +163,14 @@ WhatsApp evals can add a `whatsapp` block with `readReceipts` and `userBot` opti
 
 ```
 packages/
-  shared/    Shared types, Zod schemas, constants
-  server/    Express + WebSocket server
-  client/    React 19 + Vite + Tailwind frontend
-  cli/       CLI runner (tms start, tms run)
-evals/       YAML evaluation specs
-docs/        Documentation
+  shared/              Shared types, Zod schemas, constants
+  server/              Express + WebSocket server
+  client/              React 19 + Vite + Tailwind frontend
+  cli/                 CLI runner (tms start, tms run)
+evals/                 YAML evaluation specs
+  suites/              Eval suite definitions
+example-bot-endpoint/  Reference scheduling bot (BookBot)
+docs/                  Documentation
 ```
 
 ## Development
@@ -194,6 +199,7 @@ pnpm --filter @tms/shared build
 - [API Reference](docs/api-reference.md) -- REST and WebSocket APIs
 - [WhatsApp Simulation](docs/whatsapp.md) -- WhatsApp-specific features
 - [Evals](docs/evals.md) -- eval spec format and judge behavior
+- [Example Bot Endpoint](docs/example-bot-endpoint.md) -- BookBot reference implementation
 - [Testing](docs/testing.md) -- testing guide
 
 ## License

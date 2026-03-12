@@ -58,9 +58,13 @@ Read receipts fire status callbacks to the bot endpoint with `messageStatus: "re
 
 ### Voice Notes
 
-Audio message support for sending synthetic voice notes referenced by `audioRef` from eval spec assets. The bot endpoint receives these as media attachments with `mediaType` and `mediaUrl` fields.
+Audio message support for sending voice notes. The bot endpoint receives these as media attachments with `mediaType` and `mediaUrl` fields, and can transcribe them using a speech-to-text provider.
 
-**Status:** Partially implemented. The user bot tool and type definitions exist, but the full recording/playback UI is not yet built.
+**Playground mode:** Voice notes can be sent as audio attachments via the media attachment picker (Audio category).
+
+**Automated mode:** The user bot has a `send_voice_note` tool that references pre-recorded audio from `voiceNoteAssets` in the eval spec. Enable with `allowVoiceNotes: true` in the eval spec's `whatsapp.userBot` config. The bot endpoint receives the audio via `mediaType`/`mediaUrl` and can return a `transcription` field in its response.
+
+The example bot endpoint includes Groq Whisper STT integration for automatic audio transcription. See [Example Bot Endpoint](example-bot-endpoint.md) for details.
 
 ### Media Attachments
 
@@ -130,7 +134,7 @@ whatsapp:
   userBot:
     allowReactions: true     # let the user bot react to messages
     allowQuotedReplies: true # let the user bot use quoted replies
-    allowVoiceNotes: false   # requires audio assets (partially implemented)
+    allowVoiceNotes: false   # requires audio assets and voiceNoteAssets list
     voiceNoteAssets: []      # list of audio ref keys if allowVoiceNotes is true
 ```
 
@@ -158,7 +162,7 @@ In automated mode, the user bot LLM selects from the following actions via tool 
 | `react_to_message` | `targetMessageId`, `emoji` | Emoji reaction for acknowledgment or feedback |
 | `remove_reaction` | `targetMessageId` | Remove a previously sent reaction |
 | `reply_to_message` | `targetMessageId`, `body`, `goal_complete?` | Quote-reply to a specific message for clarity |
-| `send_voice_note` | `audioRef` | Send a pre-recorded voice note (partially implemented) |
+| `send_voice_note` | `audioRef` | Send a pre-recorded voice note |
 | `wait` | (none) | Pause when the bot says it needs processing time |
 
 The user bot can perform multiple actions per turn (e.g., react to a message and then send a reply). The `goal_complete` flag should be set to `true` on the final message action when the user bot's goal has been achieved.

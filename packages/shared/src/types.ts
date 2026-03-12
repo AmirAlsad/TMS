@@ -127,12 +127,22 @@ export interface EvalSpec {
     after?: string;
   };
   whatsapp?: WhatsAppEvalConfig;
+  judge?: {
+    instructions?: string;
+  };
+  extends?: string;
 }
 
 export interface EvalSuite {
   name: string;
   description: string;
   specs: string[];
+}
+
+export interface ConfigSnapshot {
+  userBotModel?: string;
+  judgeModel?: string;
+  botEndpoint: string;
 }
 
 export interface EvalResult {
@@ -147,6 +157,7 @@ export interface EvalResult {
   error?: string;
   tokenUsage?: TokenUsageSummary;
   batchId?: string;
+  configSnapshot?: ConfigSnapshot;
 }
 
 export type BatchRunStatus = 'running' | 'completed' | 'failed';
@@ -205,6 +216,8 @@ export interface TmsConfig {
     endpoint: string;
     method?: string;
     headers?: Record<string, string>;
+    timeoutMs?: number;
+    retries?: number;
   };
   userBot?: {
     model: string;
@@ -217,8 +230,11 @@ export interface TmsConfig {
   };
   server?: {
     port: number;
+    maxConcurrency?: number;
+    maxConcurrentEvals?: number;
   };
   whatsapp?: WhatsAppEvalConfig;
+  pricing?: Record<string, { input: number; output: number }>;
 }
 
 export interface ConversationResult {

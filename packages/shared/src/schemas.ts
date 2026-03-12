@@ -177,6 +177,12 @@ export const evalSpecSchema = z.object({
     })
     .optional(),
   whatsapp: whatsAppEvalConfigSchema.optional(),
+  judge: z
+    .object({
+      instructions: z.string().optional(),
+    })
+    .optional(),
+  extends: z.string().optional(),
 });
 
 export const judgeConfigSchema = z.object({
@@ -187,6 +193,12 @@ export const evalSuiteSchema = z.object({
   name: z.string().min(1),
   description: z.string(),
   specs: z.array(z.string().min(1)).min(1),
+});
+
+export const configSnapshotSchema = z.object({
+  userBotModel: z.string().optional(),
+  judgeModel: z.string().optional(),
+  botEndpoint: z.string(),
 });
 
 export const evalResultSchema = z.object({
@@ -207,6 +219,7 @@ export const evalResultSchema = z.object({
   error: z.string().optional(),
   tokenUsage: tokenUsageSummarySchema.optional(),
   batchId: z.string().optional(),
+  configSnapshot: configSnapshotSchema.optional(),
 });
 
 export const batchRunSchema = z.object({
@@ -228,6 +241,8 @@ export const tmsConfigSchema = z.object({
     endpoint: z.string().url(),
     method: z.string().default('POST'),
     headers: z.record(z.string()).optional(),
+    timeoutMs: z.number().int().positive().optional(),
+    retries: z.number().int().nonnegative().optional(),
   }),
   userBot: z
     .object({
@@ -245,7 +260,12 @@ export const tmsConfigSchema = z.object({
   server: z
     .object({
       port: z.number().int().default(4000),
+      maxConcurrency: z.number().int().positive().optional(),
+      maxConcurrentEvals: z.number().int().positive().optional(),
     })
     .optional(),
   whatsapp: whatsAppEvalConfigSchema.optional(),
+  pricing: z
+    .record(z.object({ input: z.number().nonnegative(), output: z.number().nonnegative() }))
+    .optional(),
 });

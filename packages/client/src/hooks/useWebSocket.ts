@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useCallback } from 'react';
 import type {
   WsMessage,
   Message,
@@ -18,8 +18,15 @@ interface EvalStatusPayload {
   totalTurns: number;
 }
 
+const INITIAL_RECONNECT_DELAY = 1000;
+const MAX_RECONNECT_DELAY = 30000;
+
 export function useWebSocket() {
   const wsRef = useRef<WebSocket | null>(null);
+  const reconnectDelayRef = useRef(INITIAL_RECONNECT_DELAY);
+  const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const mountedRef = useRef(true);
+
   const addMessage = useStore((s) => s.addMessage);
   const addLog = useStore((s) => s.addLog);
   const updateEvalStatus = useStore((s) => s.updateEvalStatus);
@@ -31,29 +38,22 @@ export function useWebSocket() {
   const addReaction = useStore((s) => s.addReaction);
   const removeReaction = useStore((s) => s.removeReaction);
   const setTypingIndicator = useStore((s) => s.setTypingIndicator);
+  const setConnectionStatus = useStore((s) => s.setConnectionStatus);
 
-  useEffect(() => {
-    let closed = false;
+  const handleMessage = useCallback(
+    (event: MessageEvent) => {
+      const refreshHistory = () => {
+        fetch('/api/eval/history')
+          .then((res) => (res.ok ? res.json() : { histories: [] }))
+          .then((data) => setSpecHistories(data.histories ?? []))
+          .catch(() => {});
+      };
 
-    const refreshHistory = () => {
-      fetch('/api/eval/history')
-        .then((res) => (res.ok ? res.json() : { histories: [] }))
-        .then((data) => setSpecHistories(data.histories ?? []))
-        .catch(() => {});
-    };
-
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const wsUrl = `${protocol}//${window.location.host}/ws`;
-    const ws = new WebSocket(wsUrl);
-    wsRef.current = ws;
-
-    ws.onmessage = (event) => {
       const msg: WsMessage = JSON.parse(event.data);
       switch (msg.type) {
         case 'user:message':
         case 'bot:message':
           addMessage(msg.payload as Message);
-          // Clear typing indicator when a message arrives
           setTypingIndicator(null);
           break;
         case 'log:entry':
@@ -106,31 +106,74 @@ export function useWebSocket() {
           setTypingIndicator(null);
           break;
       }
+    },
+    [
+      addMessage,
+      addLog,
+      updateEvalStatus,
+      setEvalResult,
+      startBatchRun,
+      completeBatchRun,
+      setSpecHistories,
+      setReadState,
+      addReaction,
+      removeReaction,
+      setTypingIndicator,
+    ],
+  );
+
+  const connect = useCallback(() => {
+    if (!mountedRef.current) return;
+
+    setConnectionStatus('connecting');
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const wsUrl = `${protocol}//${window.location.host}/ws`;
+    const ws = new WebSocket(wsUrl);
+    wsRef.current = ws;
+
+    ws.onopen = () => {
+      if (!mountedRef.current) {
+        ws.close();
+        return;
+      }
+      setConnectionStatus('connected');
+      reconnectDelayRef.current = INITIAL_RECONNECT_DELAY;
     };
 
+    ws.onmessage = handleMessage;
+
     ws.onerror = (err) => {
-      if (!closed) {
+      if (mountedRef.current) {
         console.error('WebSocket error:', err);
       }
     };
 
-    return () => {
-      closed = true;
-      ws.close();
+    ws.onclose = () => {
+      if (!mountedRef.current) return;
+      setConnectionStatus('disconnected');
+      // Schedule reconnect with exponential backoff
+      const delay = reconnectDelayRef.current;
+      reconnectDelayRef.current = Math.min(delay * 2, MAX_RECONNECT_DELAY);
+      reconnectTimerRef.current = setTimeout(connect, delay);
     };
-  }, [
-    addMessage,
-    addLog,
-    updateEvalStatus,
-    setEvalResult,
-    startBatchRun,
-    completeBatchRun,
-    setSpecHistories,
-    setReadState,
-    addReaction,
-    removeReaction,
-    setTypingIndicator,
-  ]);
+  }, [handleMessage, setConnectionStatus]);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    connect();
+
+    return () => {
+      mountedRef.current = false;
+      if (reconnectTimerRef.current) {
+        clearTimeout(reconnectTimerRef.current);
+        reconnectTimerRef.current = null;
+      }
+      if (wsRef.current) {
+        wsRef.current.close();
+        wsRef.current = null;
+      }
+    };
+  }, [connect]);
 
   return wsRef;
 }

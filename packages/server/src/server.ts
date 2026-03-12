@@ -7,6 +7,7 @@ import type { TmsConfig } from '@tms/shared';
 import { createMessageRouter } from './routes/messages.js';
 import { createLogsRouter } from './routes/logs.js';
 import { createEvalRouter } from './routes/eval.js';
+import { createEvalCostsRouter } from './routes/eval-costs.js';
 import { createConfigRouter } from './routes/config.js';
 import { createWhatsAppRouter } from './routes/whatsapp.js';
 import { createMediaRouter, ensureMediaDir, cleanupMediaDir } from './routes/media.js';
@@ -33,8 +34,36 @@ export function createServer(config: TmsConfig) {
     sendStatusCallback(config, messageId, 'read').catch(() => {});
   });
 
-  app.use('/api/message', createMessageRouter(config, broadcast, readReceiptService));
-  app.use('/api/logs', createLogsRouter(broadcast, config));
+  // Simple in-memory rate limiter
+  function createRateLimiter(maxRequests: number, windowMs: number) {
+    const hits = new Map<string, { count: number; resetAt: number }>();
+
+    return (req: express.Request, res: express.Response, next: express.NextFunction) => {
+      const key = req.ip ?? 'unknown';
+      const now = Date.now();
+      const entry = hits.get(key);
+
+      if (!entry || now > entry.resetAt) {
+        hits.set(key, { count: 1, resetAt: now + windowMs });
+        next();
+        return;
+      }
+
+      if (entry.count >= maxRequests) {
+        const retryAfter = Math.ceil((entry.resetAt - now) / 1000);
+        res.set('Retry-After', String(retryAfter));
+        res.status(429).json({ error: 'Too many requests', retryAfter });
+        return;
+      }
+
+      entry.count++;
+      next();
+    };
+  }
+
+  app.use('/api/message', createRateLimiter(100, 60_000), createMessageRouter(config, broadcast, readReceiptService));
+  app.use('/api/logs', createRateLimiter(500, 60_000), createLogsRouter(broadcast, config));
+  app.use('/api/eval/costs', createEvalCostsRouter(config));
   app.use('/api/eval', createEvalRouter(config, broadcast));
   app.use('/api/config', createConfigRouter(config));
   app.use('/api/whatsapp', createWhatsAppRouter(config, broadcast, readReceiptService));

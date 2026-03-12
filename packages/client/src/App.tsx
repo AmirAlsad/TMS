@@ -11,6 +11,7 @@ import { EvalResultsPanel } from './components/EvalResultsPanel';
 import { EvalStatusBar } from './components/EvalStatusBar';
 import { PhoneFrame } from './components/PhoneFrame';
 import { ThemeToggle } from './components/ThemeToggle';
+import { ErrorBoundary } from './components/ErrorBoundary';
 
 type RightTab = 'eval' | 'results' | 'logs';
 
@@ -26,6 +27,7 @@ export function App() {
   const mode = useStore((s) => s.mode);
   const theme = useStore((s) => s.theme);
   const setReadReceiptMode = useStore((s) => s.setReadReceiptMode);
+  const connectionStatus = useStore((s) => s.connectionStatus);
   const [rightTab, setRightTab] = useState<RightTab>('eval');
   const [rightWidth, setRightWidth] = useState(() =>
     Math.round(window.innerWidth * DEFAULT_RIGHT_RATIO),
@@ -139,12 +141,21 @@ export function App() {
       {showConfig && <ConfigPanel />}
       <EvalStatusBar />
 
+      {connectionStatus === 'disconnected' && (
+        <div className="px-4 py-2 bg-amber-50 dark:bg-amber-900/30 border-b border-amber-200 dark:border-amber-700/40
+                        text-xs font-medium text-amber-700 dark:text-amber-400 text-center">
+          Connection lost — reconnecting...
+        </div>
+      )}
+
       {/* Main content */}
       <div ref={containerRef} className="flex-1 flex overflow-hidden relative">
         {/* Phone area */}
         <div className="flex-1 min-w-0 dot-grid">
           <PhoneFrame>
-            <MessagePanel readOnly={isAutomated} />
+            <ErrorBoundary fallbackLabel="Message panel crashed">
+              <MessagePanel readOnly={isAutomated} />
+            </ErrorBoundary>
           </PhoneFrame>
         </div>
 
@@ -181,13 +192,27 @@ export function App() {
                 ))}
               </div>
               <div className="flex-1 overflow-hidden">
-                {rightTab === 'eval' && <EvalPanel />}
-                {rightTab === 'results' && <EvalResultsPanel />}
-                {rightTab === 'logs' && <LogPanel />}
+                {rightTab === 'eval' && (
+                  <ErrorBoundary fallbackLabel="Eval panel crashed">
+                    <EvalPanel />
+                  </ErrorBoundary>
+                )}
+                {rightTab === 'results' && (
+                  <ErrorBoundary fallbackLabel="Eval results crashed">
+                    <EvalResultsPanel />
+                  </ErrorBoundary>
+                )}
+                {rightTab === 'logs' && (
+                  <ErrorBoundary fallbackLabel="Log panel crashed">
+                    <LogPanel />
+                  </ErrorBoundary>
+                )}
               </div>
             </>
           ) : (
-            <LogPanel />
+            <ErrorBoundary fallbackLabel="Log panel crashed">
+              <LogPanel />
+            </ErrorBoundary>
           )}
         </div>
       </div>

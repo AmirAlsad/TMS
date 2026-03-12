@@ -30,7 +30,25 @@ import {
   getBatchRun,
   listBatchRuns,
 } from '../services/batch-runs.js';
-import { getSpecHistory, getAllSpecHistories } from '../services/eval-history.js';
+import {
+  getSpecHistory,
+  getAllSpecHistories,
+  setBaseline,
+  getAllBaselines,
+} from '../services/eval-history.js';
+
+let activeEvals = 0;
+let maxConcurrentEvals = 3; // Will be overridden from config
+
+function acquireEvalSlot(): boolean {
+  if (activeEvals >= maxConcurrentEvals) return false;
+  activeEvals++;
+  return true;
+}
+
+function releaseEvalSlot(): void {
+  activeEvals = Math.max(0, activeEvals - 1);
+}
 
 const ZERO_USAGE: TokenUsage = { promptTokens: 0, completionTokens: 0, totalTokens: 0 };
 
@@ -112,95 +130,122 @@ async function executeEval(
   broadcast: BroadcastFn,
   batchId?: string,
 ): Promise<void> {
-  const result: EvalResult = {
-    id: evalId,
-    specName: spec.name,
-    status: 'running',
-    requirements: spec.requirements.map((r) => ({ description: r })),
-    transcript: [],
-    startedAt: new Date().toISOString(),
-    ...(batchId ? { batchId } : {}),
-  };
-
-  await saveEvalResult(result);
-  broadcast({ type: 'eval:started', payload: result });
-
-  const log = createEvalLogger(broadcast, config);
-
-  log('info', `Eval started: ${spec.name}`, {
-    evalId,
-    specName: spec.name,
-    channel: spec.channel,
-    requirements: spec.requirements,
-    turnLimit: spec.turnLimit,
-  });
-
-  try {
-    if (spec.hooks?.before) {
-      log('debug', `Running before hook`, { hook: spec.hooks.before });
-      await runHook(spec.hooks.before);
-      log('debug', `Before hook completed`);
-    }
-
-    const conversationResult = await runConversation(config, spec, broadcast, log);
-    result.transcript = conversationResult.transcript;
-
-    log('info', `Conversation completed`, {
-      turnCount: conversationResult.turnCount,
-      goalCompleted: conversationResult.goalCompleted,
-    });
-
-    if (conversationResult.error) {
-      log('error', `Conversation failed: ${conversationResult.error}`);
-      result.status = 'failed';
-      result.error = conversationResult.error;
-      result.completedAt = new Date().toISOString();
-      result.tokenUsage = buildTokenUsageSummary(conversationResult);
-      await saveEvalResult(result);
-      broadcast({ type: 'eval:result', payload: result });
-      return;
-    }
-
-    if (spec.hooks?.after) {
-      log('debug', `Running after hook`, { hook: spec.hooks.after });
-      await runHook(spec.hooks.after);
-      log('debug', `After hook completed`);
-    }
-
-    const judgeOutput = await evaluateTranscript(
-      config,
-      {
-        transcript: conversationResult.transcript,
-        requirements: spec.requirements,
-        specName: spec.name,
-        specDescription: spec.description,
-        events: conversationResult.events,
-      },
-      log,
-    );
-
-    result.requirements = judgeOutput.requirements;
-    result.classification = judgeOutput.classification;
-    result.status = 'completed';
-    result.completedAt = new Date().toISOString();
-
-    result.tokenUsage = buildTokenUsageSummary(conversationResult, judgeOutput.usage);
-
-    log('info', `Eval complete: ${spec.name} — ${judgeOutput.classification}`, {
-      evalId,
+  if (!acquireEvalSlot()) {
+    const result: EvalResult = {
+      id: evalId,
       specName: spec.name,
-      classification: judgeOutput.classification,
-    });
-  } catch (err) {
-    const errorMsg = err instanceof Error ? err.message : 'Unknown error';
-    log('error', `Eval failed: ${spec.name} — ${errorMsg}`, { evalId, error: errorMsg });
-    result.status = 'failed';
-    result.error = errorMsg;
-    result.completedAt = new Date().toISOString();
+      status: 'failed',
+      requirements: spec.requirements.map((r) => ({ description: r })),
+      transcript: [],
+      startedAt: new Date().toISOString(),
+      completedAt: new Date().toISOString(),
+      error: 'Too many concurrent evaluations. Try again later.',
+      ...(batchId ? { batchId } : {}),
+    };
+    await saveEvalResult(result);
+    broadcast({ type: 'eval:result', payload: result });
+    return;
   }
 
-  await saveEvalResult(result);
-  broadcast({ type: 'eval:result', payload: result });
+  try {
+    const result: EvalResult = {
+      id: evalId,
+      specName: spec.name,
+      status: 'running',
+      requirements: spec.requirements.map((r) => ({ description: r })),
+      transcript: [],
+      startedAt: new Date().toISOString(),
+      ...(batchId ? { batchId } : {}),
+      configSnapshot: {
+        userBotModel: config.userBot?.model,
+        judgeModel: config.judge?.model,
+        botEndpoint: config.bot.endpoint,
+      },
+    };
+
+    await saveEvalResult(result);
+    broadcast({ type: 'eval:started', payload: result });
+
+    const log = createEvalLogger(broadcast, config);
+
+    log('info', `Eval started: ${spec.name}`, {
+      evalId,
+      specName: spec.name,
+      channel: spec.channel,
+      requirements: spec.requirements,
+      turnLimit: spec.turnLimit,
+    });
+
+    try {
+      if (spec.hooks?.before) {
+        log('debug', `Running before hook`, { hook: spec.hooks.before });
+        await runHook(spec.hooks.before);
+        log('debug', `Before hook completed`);
+      }
+
+      const conversationResult = await runConversation(config, spec, broadcast, log, evalId);
+      result.transcript = conversationResult.transcript;
+
+      log('info', `Conversation completed`, {
+        turnCount: conversationResult.turnCount,
+        goalCompleted: conversationResult.goalCompleted,
+      });
+
+      if (conversationResult.error) {
+        log('error', `Conversation failed: ${conversationResult.error}`);
+        result.status = 'failed';
+        result.error = conversationResult.error;
+        result.completedAt = new Date().toISOString();
+        result.tokenUsage = buildTokenUsageSummary(conversationResult);
+        await saveEvalResult(result);
+        broadcast({ type: 'eval:result', payload: result });
+        return;
+      }
+
+      if (spec.hooks?.after) {
+        log('debug', `Running after hook`, { hook: spec.hooks.after });
+        await runHook(spec.hooks.after);
+        log('debug', `After hook completed`);
+      }
+
+      const judgeOutput = await evaluateTranscript(
+        config,
+        {
+          transcript: conversationResult.transcript,
+          requirements: spec.requirements,
+          specName: spec.name,
+          specDescription: spec.description,
+          events: conversationResult.events,
+          judgeInstructions: spec.judge?.instructions,
+        },
+        log,
+      );
+
+      result.requirements = judgeOutput.requirements;
+      result.classification = judgeOutput.classification;
+      result.status = 'completed';
+      result.completedAt = new Date().toISOString();
+
+      result.tokenUsage = buildTokenUsageSummary(conversationResult, judgeOutput.usage);
+
+      log('info', `Eval complete: ${spec.name} — ${judgeOutput.classification}`, {
+        evalId,
+        specName: spec.name,
+        classification: judgeOutput.classification,
+      });
+    } catch (err) {
+      const errorMsg = err instanceof Error ? err.message : 'Unknown error';
+      log('error', `Eval failed: ${spec.name} — ${errorMsg}`, { evalId, error: errorMsg });
+      result.status = 'failed';
+      result.error = errorMsg;
+      result.completedAt = new Date().toISOString();
+    }
+
+    await saveEvalResult(result);
+    broadcast({ type: 'eval:result', payload: result });
+  } finally {
+    releaseEvalSlot();
+  }
 }
 
 function generateSpecEvalId(): string {
@@ -212,7 +257,7 @@ async function runBatch(
   specNames: string[],
   config: TmsConfig,
   broadcast: BroadcastFn,
-  options: { parallel?: boolean; suiteName?: string; label?: string },
+  options: { parallel?: boolean; suiteName?: string; label?: string; maxConcurrency?: number },
 ): Promise<{ batchRun: BatchRun; ids: string[] }> {
   const loadedSpecs: EvalSpec[] = [];
   for (const name of specNames) {
@@ -248,7 +293,8 @@ async function runBatch(
       );
 
     if (parallel) {
-      await mapWithConcurrency(loadedSpecs, (spec, i) => run(spec, ids[i]!), 5);
+      const concurrency = options.maxConcurrency ?? config.server?.maxConcurrency ?? 5;
+      await mapWithConcurrency(loadedSpecs, (spec, i) => run(spec, ids[i]!), concurrency);
     } else {
       for (let i = 0; i < loadedSpecs.length; i++) {
         await run(loadedSpecs[i]!, ids[i]!);
@@ -273,6 +319,7 @@ async function runBatch(
 }
 
 export function createEvalRouter(config: TmsConfig, broadcast: BroadcastFn) {
+  maxConcurrentEvals = config.server?.maxConcurrentEvals ?? 3;
   const router = Router();
 
   router.get('/specs', async (_req, res) => {
@@ -358,7 +405,7 @@ export function createEvalRouter(config: TmsConfig, broadcast: BroadcastFn) {
   });
 
   router.post('/batch', async (req, res) => {
-    const { specs, parallel } = req.body;
+    const { specs, parallel, maxConcurrency } = req.body;
 
     if (!Array.isArray(specs) || specs.length === 0) {
       res.status(400).json({ error: 'specs must be a non-empty array of spec names' });
@@ -375,6 +422,7 @@ export function createEvalRouter(config: TmsConfig, broadcast: BroadcastFn) {
     try {
       const { batchRun, ids } = await runBatch(specs, config, broadcast, {
         parallel: !!parallel,
+        maxConcurrency,
       });
       res.json({ batchId: batchRun.id, ids });
     } catch (err) {
@@ -390,6 +438,7 @@ export function createEvalRouter(config: TmsConfig, broadcast: BroadcastFn) {
         parallel: !!req.body.parallel,
         suiteName: suite.name,
         label: suite.name,
+        maxConcurrency: req.body.maxConcurrency,
       });
       res.json({ batchId: batchRun.id, ids, suite: suite.name });
     } catch (err) {
@@ -439,6 +488,36 @@ export function createEvalRouter(config: TmsConfig, broadcast: BroadcastFn) {
       const window = req.query.window ? Number(req.query.window) : 5;
       const history = await getSpecHistory(req.params.specName, window);
       res.json(history);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Unknown error';
+      res.status(500).json({ error: message });
+    }
+  });
+
+  // Baseline management
+  router.get('/baselines', async (_req, res) => {
+    try {
+      const baselines = await getAllBaselines();
+      res.json({ baselines });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Unknown error';
+      res.status(500).json({ error: message });
+    }
+  });
+
+  router.post('/:id/baseline', async (req, res) => {
+    try {
+      const result = await getEvalResult(req.params.id);
+      if (!result) {
+        res.status(404).json({ error: 'Eval result not found' });
+        return;
+      }
+      if (result.status !== 'completed') {
+        res.status(400).json({ error: 'Can only set baseline from completed eval results' });
+        return;
+      }
+      await setBaseline(result.specName, result.id);
+      res.json({ specName: result.specName, baselineId: result.id });
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Unknown error';
       res.status(500).json({ error: message });
