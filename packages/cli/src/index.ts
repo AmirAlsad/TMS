@@ -3,6 +3,7 @@ import { Command } from 'commander';
 import { findProjectRoot } from '@tms/server/services';
 import { registerStartCommand } from './commands/start.js';
 import { registerRunCommand } from './commands/run.js';
+import { registerDiffCommand } from './commands/diff.js';
 
 dotenv.config({ path: `${findProjectRoot()}/.env` });
 
@@ -15,5 +16,6 @@ program
 
 registerStartCommand(program);
 registerRunCommand(program);
+registerDiffCommand(program);
 
 program.parse();

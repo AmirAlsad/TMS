@@ -27,6 +27,7 @@ export const messageSchema = z.object({
   mediaUrl: z.string().optional(),
   transcription: z.string().nullable().optional(),
   readStatus: messageReadStatusSchema.optional(),
+  silence: z.boolean().optional(),
 });
 
 export const logEntrySchema = z.object({
@@ -48,6 +49,8 @@ export const botEndpointMetricsSchema = z.object({
   cachedTokens: z.number().int().nonnegative().optional(),
   uncachedTokens: z.number().int().nonnegative().optional(),
   latencyMs: z.number().nonnegative().optional(),
+  cacheCreationInputTokens: z.number().int().nonnegative().optional(),
+  cacheReadInputTokens: z.number().int().nonnegative().optional(),
 });
 
 export const botEndpointSummarySchema = z.object({
@@ -55,6 +58,18 @@ export const botEndpointSummarySchema = z.object({
   averageLatencyMs: z.number().nonnegative().optional(),
   totalCachedTokens: z.number().int().nonnegative().optional(),
   totalUncachedTokens: z.number().int().nonnegative().optional(),
+  totalCacheCreationInputTokens: z.number().int().nonnegative().optional(),
+  totalCacheReadInputTokens: z.number().int().nonnegative().optional(),
+  cacheHitRate: z.number().min(0).max(1).optional(),
+});
+
+// --- Cost breakdown schema (Tier 4.6) ---
+
+export const costBreakdownSchema = z.object({
+  userBot: z.number().nonnegative().optional(),
+  botEndpoint: z.number().nonnegative().optional(),
+  judge: z.number().nonnegative().optional(),
+  total: z.number().nonnegative(),
 });
 
 export const tokenUsageSummarySchema = z.object({
@@ -63,6 +78,7 @@ export const tokenUsageSummarySchema = z.object({
   botEndpoint: tokenUsageSchema,
   total: tokenUsageSchema,
   botMetrics: botEndpointSummarySchema.optional(),
+  costBreakdown: costBreakdownSchema.optional(),
 });
 
 export const readReceiptModeSchema = z.enum(['auto_delay', 'manual', 'on_response']);
@@ -160,6 +176,82 @@ export const userBotActionSchema = z.discriminatedUnion('type', [
   }),
 ]);
 
+// --- Prior session schema (Tier 4.4) ---
+
+export const priorSessionMessageSchema = z.object({
+  role: z.enum(['user', 'bot']),
+  content: z.string(),
+});
+
+export const priorSessionSchema = z.object({
+  history: z.array(priorSessionMessageSchema).optional(),
+  coachNotes: z.string().optional(),
+  fixtureRef: z.string().optional(),
+  knownContext: z.array(z.string()).optional(),
+});
+
+// --- Eval phase schema (Tier 4.5) ---
+
+export const evalPhaseSchema = z.object({
+  turnLimit: z.number().int().positive(),
+  userBot: z
+    .object({
+      goal: z.string().optional(),
+      persona: z.string().optional(),
+    })
+    .optional(),
+  requirements: z.array(z.string()).optional(),
+});
+
+// --- Trigger schemas (Tiers 2.3, 3.1, 3.2, 3.3) ---
+
+export const triggerTypeSchema = z.enum([
+  'sub_agent',
+  'scheduled',
+  'system_event',
+  'check_in',
+  'broadcast',
+]);
+
+export const triggerMetadataSchema = z.object({
+  taskType: z.string().optional(),
+  resultSummary: z.string().optional(),
+  taskId: z.string().optional(),
+  needsResponse: z.boolean().optional(),
+  scheduleId: z.string().optional(),
+  scheduleType: z.string().optional(),
+  scheduledFor: z.string().optional(),
+  eventType: z.string().optional(),
+  eventData: z.record(z.unknown()).optional(),
+  checkInId: z.string().optional(),
+  event: z.string().optional(),
+  scheduledAt: z.string().optional(),
+  broadcastId: z.string().optional(),
+  adminId: z.string().optional(),
+});
+
+export const triggerPayloadSchema = z.object({
+  type: triggerTypeSchema,
+  userId: z.string(),
+  message: z.string(),
+  timestamp: z.string(),
+  metadata: triggerMetadataSchema,
+});
+
+export const triggerStepSchema = z.object({
+  trigger: z.object({
+    type: triggerTypeSchema,
+    message: z.string(),
+    metadata: triggerMetadataSchema.optional(),
+  }),
+});
+
+export const messageStepSchema = z.object({
+  message: z.literal(true),
+});
+
+export const evalStepSchema = z.union([triggerStepSchema, messageStepSchema]);
+
 export const evalSpecSchema = z.object({
   name: z.string(),
   description: z.string(),
@@ -183,6 +275,17 @@ export const evalSpecSchema = z.object({
     })
     .optional(),
   extends: z.string().optional(),
+  silenceExpected: z.boolean().optional(),
+  // Tier 4.1: Global requirement sets
+  globals: z.union([z.string(), z.array(z.string())]).optional(),
+  // Tier 4.4: Cross-session continuity
+  priorSession: priorSessionSchema.optional(),
+  // Tier 4.5: Multi-phase conversations
+  phases: z.array(evalPhaseSchema).optional(),
+  // Tier 4.6: Cost budget
+  costBudget: z.number().nonnegative().optional(),
+  // Tiers 3.1, 3.2, 3.3: Ordered trigger/message steps
+  steps: z.array(evalStepSchema).optional(),
 });
 
 export const judgeConfigSchema = z.object({
@@ -193,6 +296,7 @@ export const evalSuiteSchema = z.object({
   name: z.string().min(1),
   description: z.string(),
   specs: z.array(z.string().min(1)).min(1),
+  costBudget: z.number().nonnegative().optional(),
 });
 
 export const configSnapshotSchema = z.object({
@@ -220,6 +324,9 @@ export const evalResultSchema = z.object({
   tokenUsage: tokenUsageSummarySchema.optional(),
   batchId: z.string().optional(),
   configSnapshot: configSnapshotSchema.optional(),
+  abLabel: z.string().optional(),
+  costBreakdown: costBreakdownSchema.optional(),
+  budgetExceeded: z.boolean().optional(),
 });
 
 export const batchRunSchema = z.object({
@@ -234,6 +341,7 @@ export const batchRunSchema = z.object({
   parallel: z.boolean().optional(),
   comparativeSpec: z.string().optional(),
   runCount: z.number().int().positive().optional(),
+  abLabel: z.string().optional(),
 });
 
 export const tmsConfigSchema = z.object({
@@ -267,5 +375,13 @@ export const tmsConfigSchema = z.object({
   whatsapp: whatsAppEvalConfigSchema.optional(),
   pricing: z
     .record(z.object({ input: z.number().nonnegative(), output: z.number().nonnegative() }))
+    .optional(),
+  messageBuffering: z
+    .object({
+      enabled: z.boolean(),
+      initialTimeoutMs: z.number().int().nonnegative().optional(),
+      growthFactor: z.number().positive().optional(),
+      maxTimeoutMs: z.number().int().nonnegative().optional(),
+    })
     .optional(),
 });

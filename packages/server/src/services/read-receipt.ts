@@ -19,7 +19,11 @@ export class ReadReceiptService {
   private config: ReadReceiptConfig;
   private onReadCallback?: ReadCallback;
 
-  constructor(config: ReadReceiptConfig, broadcast: BroadcastFn, onReadCallback?: ReadCallback) {
+  constructor(
+    config: ReadReceiptConfig,
+    broadcast: BroadcastFn,
+    onReadCallback?: ReadCallback,
+  ) {
     this.config = config;
     this.broadcast = broadcast;
     this.onReadCallback = onReadCallback;

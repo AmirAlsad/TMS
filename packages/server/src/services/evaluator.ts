@@ -6,6 +6,8 @@ import type {
   Classification,
   TokenUsage,
   WhatsAppEvent,
+  PriorSession,
+  EvalPhase,
 } from '@tms/shared';
 import { resolveModel } from './ai-registry.js';
 import type { EvalLogFn } from './eval-logger.js';
@@ -17,6 +19,12 @@ export interface JudgeInput {
   specDescription?: string;
   events?: WhatsAppEvent[];
   judgeInstructions?: string;
+  /** Whether silence is expected from the bot (Tier 4.2) */
+  silenceExpected?: boolean;
+  /** Prior session context for cross-session continuity evaluation (Tier 4.4) */
+  priorSession?: PriorSession;
+  /** Phase definitions for multi-phase evaluation (Tier 4.5) */
+  phases?: EvalPhase[];
 }
 
 export interface JudgeOutput {
@@ -39,6 +47,15 @@ function buildPrompt(input: JudgeInput): { system: string; user: string } {
   const entries: TranscriptEntry[] = [];
 
   for (const m of input.transcript) {
+    // Handle silence messages (Tier 4.2)
+    if (m.silence) {
+      entries.push({
+        timestamp: m.timestamp,
+        text: `[BOT SILENCE]: The bot deliberately chose not to respond.`,
+      });
+      continue;
+    }
+
     let line = `[${m.role.toUpperCase()}]: ${m.content}`;
     if (m.quotedReply) {
       line = `[${m.role.toUpperCase()} quoted ${m.quotedReply.targetMessageId}]: ${m.content}`;
@@ -100,6 +117,68 @@ When evaluating, consider:
 The transcript may include [TOOL CALLS] and [TOOL RESULTS] sections showing the bot's tool usage. Use these to verify the bot's behavior against the requirements.
 
 The transcript may also include WhatsApp-specific events such as reactions, quoted replies, and read receipts. Consider these when evaluating conversational quality and responsiveness.
+
+The bot may send multiple consecutive messages as part of a single response (multi-message splitting). This is a deliberate design choice — evaluate whether the splitting creates a natural conversational rhythm and whether the message boundaries are placed at meaningful points.`;
+
+  // Silence evaluation instructions (Tier 4.2)
+  if (input.silenceExpected !== undefined) {
+    if (input.silenceExpected) {
+      system += `
+
+## Silence Evaluation
+The transcript may contain [BOT SILENCE] entries indicating the bot deliberately chose not to respond. In this evaluation, silence IS the expected correct behavior in at least some turns. When evaluating silence-related requirements:
+- [BOT SILENCE] after a conversation closer ("cool thanks", "bet", "sounds good") is CORRECT behavior
+- [BOT SILENCE] after a task acknowledgment with no follow-up question is CORRECT behavior
+- A text response where silence would have been more natural should be evaluated as a potential failure
+- Silence is a deliberate feature, not an error`;
+    } else {
+      system += `
+
+## Silence Evaluation
+The transcript may contain [BOT SILENCE] entries indicating the bot deliberately chose not to respond. In this evaluation, the bot should NOT go silent — silence would be incorrect behavior. When evaluating:
+- [BOT SILENCE] when the user asked a question is a FAILURE
+- [BOT SILENCE] when the user is in distress or expressing vulnerability is a FAILURE
+- [BOT SILENCE] when there is an open thread requiring a response is a FAILURE
+- The bot should always respond in this scenario`;
+    }
+  }
+
+  // Prior session context for judge (Tier 4.4)
+  if (input.priorSession) {
+    system += `\n\n## Prior Session Context`;
+    if (input.priorSession.history?.length) {
+      const historyLines = input.priorSession.history
+        .map((m) => `[${m.role.toUpperCase()}]: ${m.content}`)
+        .join('\n');
+      system += `\nThe following conversation happened in a prior session. The bot should be aware of this context without the user needing to repeat it:\n${historyLines}`;
+    }
+    if (input.priorSession.coachNotes) {
+      system += `\nCoach notes from prior sessions:\n${input.priorSession.coachNotes}`;
+    }
+    if (input.priorSession.knownContext?.length) {
+      system += `\nThe bot should already know the following from prior sessions (the user deliberately did NOT mention these):`;
+      for (const ctx of input.priorSession.knownContext) {
+        system += `\n- ${ctx}`;
+      }
+      system += `\nEvaluate whether the bot correctly references or accounts for this prior context when relevant.`;
+    }
+  }
+
+  // Multi-phase context for judge (Tier 4.5)
+  if (input.phases?.length) {
+    system += `\n\n## Multi-Phase Conversation`;
+    system += `\nThis conversation spans multiple phases with different configurations. The transcript may contain [PHASE BOUNDARY] markers. Evaluate each phase's requirements in the context of its designated personality and purpose:`;
+    for (let i = 0; i < input.phases.length; i++) {
+      const phase = input.phases[i]!;
+      system += `\n- Phase ${i + 1}: ${phase.turnLimit} turns`;
+      if (phase.requirements?.length) {
+        system += `\n  Phase-specific requirements: ${phase.requirements.join('; ')}`;
+      }
+    }
+    system += `\nEvaluate both per-phase requirements and overall requirements across the full transcript. Pay attention to the quality of transitions between phases.`;
+  }
+
+  system += `
 
 Respond with ONLY valid JSON in this exact format:
 {

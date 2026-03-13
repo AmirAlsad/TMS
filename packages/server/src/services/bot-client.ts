@@ -6,10 +6,15 @@ import type {
   ToolCallInfo,
   ToolResultInfo,
   WhatsAppReaction,
+  EvalSpec,
 } from '@tms/shared';
 
 export interface BotResponse {
   text: string;
+  /** Individual messages from multi-message bot endpoints */
+  messages?: string[];
+  /** Bot deliberately chose not to respond */
+  silence?: boolean;
   usage?: TokenUsage;
   metrics?: BotEndpointMetrics;
   toolCalls?: ToolCallInfo[];
@@ -52,6 +57,11 @@ function extractMetrics(data: unknown): BotEndpointMetrics | undefined {
   if (typeof raw.cachedTokens === 'number') metrics.cachedTokens = raw.cachedTokens;
   if (typeof raw.uncachedTokens === 'number') metrics.uncachedTokens = raw.uncachedTokens;
   if (typeof raw.latencyMs === 'number') metrics.latencyMs = raw.latencyMs;
+  // Anthropic prompt cache metrics
+  if (typeof raw.cacheCreationInputTokens === 'number')
+    metrics.cacheCreationInputTokens = raw.cacheCreationInputTokens;
+  if (typeof raw.cacheReadInputTokens === 'number')
+    metrics.cacheReadInputTokens = raw.cacheReadInputTokens;
 
   return Object.keys(metrics).length > 0 ? metrics : undefined;
 }
@@ -65,6 +75,7 @@ export async function sendToBot(
   config: TmsConfig,
   message: Message,
   callbackUrl?: string,
+  _evalSpec?: EvalSpec,
 ): Promise<BotResponse> {
   const { endpoint, method = 'POST', headers = {} } = config.bot;
   const timeoutMs = config.bot.timeoutMs ?? 60000;
@@ -89,7 +100,7 @@ export async function sendToBot(
     body.callbackUrl = callbackUrl;
   }
 
-  const RETRYABLE_STATUS_CODES = new Set([429, 502, 503, 504]);
+  const RETRYABLE_STATUS_CODES = new Set([429, 500, 502, 503, 504]);
   const NON_RETRYABLE_STATUS_CODES = new Set([400, 401, 404]);
 
   let lastError: Error | undefined;
@@ -155,7 +166,7 @@ export async function sendToBot(
 
   const data = await response.json();
 
-  // Support common response shapes
+  // --- Support common response shapes ---
   let text: string;
   if (typeof data === 'string') {
     text = data;
@@ -171,6 +182,21 @@ export async function sendToBot(
     text = '';
   }
 
+  // Support array responses (multi-message endpoints)
+  let messages: string[] | undefined;
+  if (Array.isArray(data.response)) {
+    const filtered = (data.response as unknown[]).filter(
+      (m): m is string => typeof m === 'string' && m.length > 0,
+    );
+    if (filtered.length > 0) {
+      messages = filtered;
+      if (!text) text = filtered.join('\n\n');
+    }
+  }
+
+  // Support silence signaling
+  const silence = data.silence === true ? true : undefined;
+
   const toolCalls = Array.isArray(data.toolCalls) ? (data.toolCalls as ToolCallInfo[]) : undefined;
   const toolResults = Array.isArray(data.toolResults)
     ? (data.toolResults as ToolResultInfo[])
@@ -180,12 +206,14 @@ export async function sendToBot(
   const mediaUrl = typeof data.mediaUrl === 'string' ? data.mediaUrl : undefined;
   const transcription = typeof data.transcription === 'string' ? data.transcription : undefined;
 
-  if (!text && !mediaUrl) {
+  if (!text && !mediaUrl && !silence) {
     throw new Error('Could not extract message from bot response');
   }
 
   return {
     text,
+    messages,
+    silence,
     usage: extractUsage(data),
     metrics: extractMetrics(data),
     toolCalls,

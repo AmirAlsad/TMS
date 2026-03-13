@@ -41,7 +41,7 @@ export function App() {
     document.documentElement.classList.toggle('dark', theme === 'dark');
   }, [theme]);
 
-  // Sync read receipt mode from server config on mount
+  // Sync config from server on mount
   useEffect(() => {
     fetch('/api/config')
       .then((r) => r.json())

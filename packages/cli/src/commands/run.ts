@@ -26,6 +26,7 @@ export function registerRunCommand(program: Command): void {
     .option('-s, --suite <name>', 'Run a named suite from evals/suites/')
     .option('--runs <n>', 'Repeat each spec N times for comparative runs', parseInt)
     .option('--check-regression', 'Check for regressions after running (exit code 3)')
+    .option('--cost-limit <dollars>', 'Maximum cost budget in dollars — fail if exceeded', parseFloat)
     .action(async (specInputs: string[], opts: RunOptions) => {
       try {
         if (opts.config) {
@@ -116,6 +117,37 @@ export function registerRunCommand(program: Command): void {
             console.log(`  ${name}: ${color(`${p}/${total}`)} (${Math.round(rate * 100)}%)`);
           }
           console.log();
+        }
+
+        // --cost-limit: check if total cost exceeded the budget (Tier 6.2)
+        if (opts.costLimit != null && opts.costLimit > 0) {
+          let totalCost = 0;
+          for (const r of report.results) {
+            const costBreakdown = r.evalResult.costBreakdown;
+            const botCost = r.evalResult.tokenUsage?.botMetrics?.totalCost;
+            if (costBreakdown?.total) {
+              totalCost += costBreakdown.total;
+            } else if (botCost) {
+              totalCost += botCost;
+            }
+          }
+
+          if (totalCost > opts.costLimit) {
+            console.log(
+              chalk.red.bold(
+                `COST LIMIT EXCEEDED: $${totalCost.toFixed(4)} > $${opts.costLimit.toFixed(2)}`,
+              ),
+            );
+            console.log();
+            process.exit(4); // Dedicated exit code for cost-limit breach (distinct from test failure=1)
+          } else {
+            console.log(
+              chalk.green(
+                `Cost within budget: $${totalCost.toFixed(4)} / $${opts.costLimit.toFixed(2)}`,
+              ),
+            );
+            console.log();
+          }
         }
 
         // --check-regression: load history and check for regressions

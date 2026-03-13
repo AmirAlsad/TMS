@@ -15,6 +15,9 @@ export const DEFAULT_PORT = 4000;
 
 export const DEFAULT_TURN_LIMIT = 20;
 
+/** Default pacing delay between multi-message bubbles (ms) */
+export const DEFAULT_MESSAGE_PACING_MS = 800;
+
 // --- Media support ---
 
 export type MediaCategory = 'image' | 'sticker' | 'audio' | 'video' | 'document' | 'contact';

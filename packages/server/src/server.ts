@@ -30,9 +30,13 @@ export function createServer(config: TmsConfig) {
   const broadcast = setupWebSocket(wss);
 
   const readReceiptConfig = config.whatsapp?.readReceipts ?? { mode: 'on_response' as const };
-  const readReceiptService = new ReadReceiptService(readReceiptConfig, broadcast, (messageId) => {
-    sendStatusCallback(config, messageId, 'read').catch(() => {});
-  });
+  const readReceiptService = new ReadReceiptService(
+    readReceiptConfig,
+    broadcast,
+    (messageId) => {
+      sendStatusCallback(config, messageId, 'read').catch(() => {});
+    },
+  );
 
   // Simple in-memory rate limiter
   function createRateLimiter(maxRequests: number, windowMs: number) {

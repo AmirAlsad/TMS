@@ -14,11 +14,16 @@ export function ConfigPanel() {
 
   const save = async () => {
     setBotEndpoint(value);
+
+    const configBody: Record<string, unknown> = {
+      bot: { endpoint: value, method: 'POST' },
+    };
+
     try {
       await fetch('/api/config', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ bot: { endpoint: value, method: 'POST' } }),
+        body: JSON.stringify(configBody),
       });
     } catch (err) {
       console.error('Failed to update config:', err);

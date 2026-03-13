@@ -9,6 +9,8 @@ export interface RunOptions {
   suite?: string;
   runs?: number;
   checkRegression?: boolean;
+  /** Maximum cost budget in dollars — exit code 1 if exceeded (Tier 6.2) */
+  costLimit?: number;
 }
 
 export interface SpecResult {

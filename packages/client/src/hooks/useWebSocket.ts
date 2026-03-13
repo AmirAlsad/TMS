@@ -39,6 +39,7 @@ export function useWebSocket() {
   const removeReaction = useStore((s) => s.removeReaction);
   const setTypingIndicator = useStore((s) => s.setTypingIndicator);
   const setConnectionStatus = useStore((s) => s.setConnectionStatus);
+  const setLastWsMessage = useStore((s) => s.setLastWsMessage);
 
   const handleMessage = useCallback(
     (event: MessageEvent) => {
@@ -105,6 +106,11 @@ export function useWebSocket() {
         case 'whatsapp:typing_stop':
           setTypingIndicator(null);
           break;
+        case 'replay:started':
+        case 'replay:message':
+        case 'replay:completed':
+          setLastWsMessage({ type: msg.type, payload: msg.payload });
+          break;
       }
     },
     [
@@ -119,6 +125,7 @@ export function useWebSocket() {
       addReaction,
       removeReaction,
       setTypingIndicator,
+      setLastWsMessage,
     ],
   );
 

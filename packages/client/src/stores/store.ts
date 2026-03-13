@@ -60,6 +60,10 @@ interface TmsStore {
   typingIndicator: { active: boolean; role: 'user' | 'bot' } | null;
   readReceiptMode: ReadReceiptMode;
 
+  // Last WebSocket message (for components that need to react to specific events)
+  lastWsMessage: { type: string; payload?: unknown } | null;
+  setLastWsMessage: (msg: { type: string; payload?: unknown } | null) => void;
+
   connectionStatus: 'connecting' | 'connected' | 'disconnected';
   setConnectionStatus: (status: 'connecting' | 'connected' | 'disconnected') => void;
 
@@ -102,6 +106,7 @@ interface TmsStore {
   setReplyingTo: (message: Message | null) => void;
   setTypingIndicator: (indicator: { active: boolean; role: 'user' | 'bot' } | null) => void;
   setReadReceiptMode: (mode: ReadReceiptMode) => void;
+
 }
 
 export const useStore = create<TmsStore>((set, get) => ({
@@ -135,6 +140,9 @@ export const useStore = create<TmsStore>((set, get) => ({
   replyingTo: null,
   typingIndicator: null,
   readReceiptMode: 'on_response',
+
+  lastWsMessage: null,
+  setLastWsMessage: (msg) => set({ lastWsMessage: msg }),
 
   connectionStatus: 'connecting',
   setConnectionStatus: (status) => set({ connectionStatus: status }),
@@ -282,4 +290,5 @@ export const useStore = create<TmsStore>((set, get) => ({
   setReplyingTo: (message) => set({ replyingTo: message }),
   setTypingIndicator: (indicator) => set({ typingIndicator: indicator }),
   setReadReceiptMode: (mode) => set({ readReceiptMode: mode }),
+
 }));
