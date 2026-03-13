@@ -9,12 +9,16 @@ import type {
   ConversationResult,
   BotEndpointSummary,
   BatchRun,
+  CostBreakdown,
+  ABVariantConfig,
 } from '@tms/shared';
 import { evalSpecSchema, mapWithConcurrency } from '@tms/shared';
 import type { BroadcastFn } from '../ws/handler.js';
-import { runConversation } from '../services/conversation.js';
+import { runConversation, runMultiPhaseConversation } from '../services/conversation.js';
 import { runHook } from '../services/hooks.js';
 import { evaluateTranscript } from '../services/evaluator.js';
+import { generateABReport } from '../services/ab-report.js';
+import { diffEvalResults } from '../services/eval-diff.js';
 import {
   saveEvalResult,
   getEvalResult,
@@ -78,6 +82,10 @@ function buildTokenUsageSummary(
   let latencyCount = 0;
   let hasAnyMetrics = false;
 
+  // Prompt cache metric aggregation (Tier 7.2)
+  let totalCacheCreation = 0;
+  let totalCacheRead = 0;
+
   for (const t of conversationResult.turnUsages) {
     if (!t.botMetrics) continue;
     hasAnyMetrics = true;
@@ -88,6 +96,10 @@ function buildTokenUsageSummary(
       latencySum += t.botMetrics.latencyMs;
       latencyCount++;
     }
+    if (t.botMetrics.cacheCreationInputTokens != null)
+      totalCacheCreation += t.botMetrics.cacheCreationInputTokens;
+    if (t.botMetrics.cacheReadInputTokens != null)
+      totalCacheRead += t.botMetrics.cacheReadInputTokens;
   }
 
   if (hasAnyMetrics) {
@@ -96,6 +108,10 @@ function buildTokenUsageSummary(
     if (totalCached > 0) botMetrics.totalCachedTokens = totalCached;
     if (totalUncached > 0) botMetrics.totalUncachedTokens = totalUncached;
     if (latencyCount > 0) botMetrics.averageLatencyMs = Math.round(latencySum / latencyCount);
+    if (totalCacheCreation > 0) botMetrics.totalCacheCreationInputTokens = totalCacheCreation;
+    if (totalCacheRead > 0) botMetrics.totalCacheReadInputTokens = totalCacheRead;
+    const cacheTotal = totalCacheCreation + totalCacheRead;
+    if (cacheTotal > 0) botMetrics.cacheHitRate = totalCacheRead / cacheTotal;
   }
 
   return {
@@ -108,6 +124,55 @@ function buildTokenUsageSummary(
       totalTokens: ub.totalTokens + ju.totalTokens + be.totalTokens,
     },
     botMetrics,
+  };
+}
+
+/**
+ * Compute per-system cost breakdown (Tier 4.6).
+ * Uses pricing config for user bot and judge models, plus bot endpoint reported costs.
+ */
+function computeCostBreakdown(
+  tokenUsage: TokenUsageSummary,
+  config: TmsConfig,
+  configSnapshot?: { userBotModel?: string; judgeModel?: string },
+): CostBreakdown | undefined {
+  if (!config.pricing) return undefined;
+
+  let userBotCost = 0;
+  let judgeCost = 0;
+  let botEndpointCost = 0;
+
+  // User bot cost from pricing config
+  const ubModel = configSnapshot?.userBotModel;
+  if (ubModel && config.pricing[ubModel]) {
+    const p = config.pricing[ubModel]!;
+    userBotCost = (tokenUsage.userBot.promptTokens / 1_000_000) * p.input
+      + (tokenUsage.userBot.completionTokens / 1_000_000) * p.output;
+  }
+
+  // Judge cost from pricing config
+  const judgeModel = configSnapshot?.judgeModel;
+  if (judgeModel && config.pricing[judgeModel]) {
+    const p = config.pricing[judgeModel]!;
+    judgeCost = (tokenUsage.judge.promptTokens / 1_000_000) * p.input
+      + (tokenUsage.judge.completionTokens / 1_000_000) * p.output;
+  }
+
+  // Bot endpoint cost from reported metrics
+  if (tokenUsage.botMetrics?.totalCost) {
+    botEndpointCost = tokenUsage.botMetrics.totalCost;
+  }
+
+  const total = userBotCost + judgeCost + botEndpointCost;
+
+  // Only return if we have any meaningful cost data
+  if (total === 0 && !tokenUsage.botMetrics?.totalCost) return undefined;
+
+  return {
+    userBot: userBotCost > 0 ? userBotCost : undefined,
+    botEndpoint: botEndpointCost > 0 ? botEndpointCost : undefined,
+    judge: judgeCost > 0 ? judgeCost : undefined,
+    total,
   };
 }
 
@@ -183,7 +248,10 @@ async function executeEval(
         log('debug', `Before hook completed`);
       }
 
-      const conversationResult = await runConversation(config, spec, broadcast, log, evalId);
+      // Use multi-phase conversation loop if phases are defined (Tier 4.5)
+      const conversationResult = spec.phases?.length
+        ? await runMultiPhaseConversation(config, spec, spec.phases, broadcast, log, evalId)
+        : await runConversation(config, spec, broadcast, log, evalId);
       result.transcript = conversationResult.transcript;
 
       log('info', `Conversation completed`, {
@@ -208,15 +276,28 @@ async function executeEval(
         log('debug', `After hook completed`);
       }
 
+      // Collect all requirements including phase-specific ones (Tier 4.5)
+      const allRequirements = [...spec.requirements];
+      if (spec.phases?.length) {
+        for (const phase of spec.phases) {
+          if (phase.requirements?.length) {
+            allRequirements.push(...phase.requirements);
+          }
+        }
+      }
+
       const judgeOutput = await evaluateTranscript(
         config,
         {
           transcript: conversationResult.transcript,
-          requirements: spec.requirements,
+          requirements: allRequirements,
           specName: spec.name,
           specDescription: spec.description,
           events: conversationResult.events,
           judgeInstructions: spec.judge?.instructions,
+          silenceExpected: spec.silenceExpected,
+          priorSession: spec.priorSession,
+          phases: spec.phases,
         },
         log,
       );
@@ -227,6 +308,29 @@ async function executeEval(
       result.completedAt = new Date().toISOString();
 
       result.tokenUsage = buildTokenUsageSummary(conversationResult, judgeOutput.usage);
+
+      // Compute cost breakdown (Tier 4.6)
+      const costBreakdown = computeCostBreakdown(
+        result.tokenUsage,
+        config,
+        result.configSnapshot,
+      );
+      if (costBreakdown) {
+        result.tokenUsage.costBreakdown = costBreakdown;
+        result.costBreakdown = costBreakdown;
+      }
+
+      // Enforce cost budget (Tier 4.6)
+      if (spec.costBudget != null && costBreakdown) {
+        if (costBreakdown.total > spec.costBudget) {
+          result.budgetExceeded = true;
+          result.classification = 'failed';
+          log?.('warn', `Cost budget exceeded: $${costBreakdown.total.toFixed(4)} > $${spec.costBudget.toFixed(4)}`, {
+            costTotal: costBreakdown.total,
+            costBudget: spec.costBudget,
+          });
+        }
+      }
 
       log('info', `Eval complete: ${spec.name} — ${judgeOutput.classification}`, {
         evalId,
@@ -494,6 +598,133 @@ export function createEvalRouter(config: TmsConfig, broadcast: BroadcastFn) {
     }
   });
 
+  // --- A/B Test endpoint (Tier 4.3) ---
+  router.post('/ab-test', async (req, res) => {
+    const { variantA, variantB, parallel } = req.body as {
+      variantA?: ABVariantConfig;
+      variantB?: ABVariantConfig;
+      parallel?: boolean;
+    };
+
+    if (!variantA?.label || !variantA?.specs?.length) {
+      res.status(400).json({ error: 'variantA must have a label and non-empty specs array' });
+      return;
+    }
+    if (!variantB?.label || !variantB?.specs?.length) {
+      res.status(400).json({ error: 'variantB must have a label and non-empty specs array' });
+      return;
+    }
+
+    try {
+      // Build variant-specific configs by overriding bot endpoint/headers
+      const configA: TmsConfig = variantA.botEndpoint || variantA.botHeaders
+        ? {
+            ...config,
+            bot: {
+              ...config.bot,
+              ...(variantA.botEndpoint ? { endpoint: variantA.botEndpoint } : {}),
+              ...(variantA.botHeaders
+                ? { headers: { ...config.bot.headers, ...variantA.botHeaders } }
+                : {}),
+            },
+          }
+        : config;
+
+      const configB: TmsConfig = variantB.botEndpoint || variantB.botHeaders
+        ? {
+            ...config,
+            bot: {
+              ...config.bot,
+              ...(variantB.botEndpoint ? { endpoint: variantB.botEndpoint } : {}),
+              ...(variantB.botHeaders
+                ? { headers: { ...config.bot.headers, ...variantB.botHeaders } }
+                : {}),
+            },
+          }
+        : config;
+
+      // Run variant A
+      const { batchRun: batchA, ids: idsA } = await runBatch(
+        variantA.specs,
+        configA,
+        broadcast,
+        {
+          parallel: !!parallel,
+          label: `A/B Variant A: ${variantA.label}`,
+        },
+      );
+      batchA.abLabel = variantA.label;
+      await saveBatchRun(batchA);
+
+      // Run variant B
+      const { batchRun: batchB, ids: idsB } = await runBatch(
+        variantB.specs,
+        configB,
+        broadcast,
+        {
+          parallel: !!parallel,
+          label: `A/B Variant B: ${variantB.label}`,
+        },
+      );
+      batchB.abLabel = variantB.label;
+      await saveBatchRun(batchB);
+
+      res.json({
+        variantA: { batchId: batchA.id, ids: idsA, label: variantA.label },
+        variantB: { batchId: batchB.id, ids: idsB, label: variantB.label },
+        message: 'A/B test started. Use GET /api/eval/ab-test/:batchIdA/:batchIdB to get the report when both batches complete.',
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Unknown error';
+      res.status(400).json({ error: message });
+    }
+  });
+
+  // A/B test report — compare two completed batches
+  router.get('/ab-test/:batchIdA/:batchIdB', async (req, res) => {
+    try {
+      const batchA = await getBatchRun(req.params.batchIdA);
+      const batchB = await getBatchRun(req.params.batchIdB);
+
+      if (!batchA) {
+        res.status(404).json({ error: `Batch A "${req.params.batchIdA}" not found` });
+        return;
+      }
+      if (!batchB) {
+        res.status(404).json({ error: `Batch B "${req.params.batchIdB}" not found` });
+        return;
+      }
+
+      if (batchA.status !== 'completed' || batchB.status !== 'completed') {
+        res.status(400).json({
+          error: 'Both batches must be completed to generate an A/B report',
+          statusA: batchA.status,
+          statusB: batchB.status,
+        });
+        return;
+      }
+
+      // Load all eval results for both batches
+      const allResults = await listEvalResults();
+      const resultsA = allResults.filter((r) => batchA.specIds.includes(r.id));
+      const resultsB = allResults.filter((r) => batchB.specIds.includes(r.id));
+
+      const report = generateABReport(
+        batchA.abLabel ?? batchA.label,
+        batchA.id,
+        resultsA,
+        batchB.abLabel ?? batchB.label,
+        batchB.id,
+        resultsB,
+      );
+
+      res.json(report);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Unknown error';
+      res.status(500).json({ error: message });
+    }
+  });
+
   // Baseline management
   router.get('/baselines', async (_req, res) => {
     try {
@@ -518,6 +749,93 @@ export function createEvalRouter(config: TmsConfig, broadcast: BroadcastFn) {
       }
       await setBaseline(result.specName, result.id);
       res.json({ specName: result.specName, baselineId: result.id });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Unknown error';
+      res.status(500).json({ error: message });
+    }
+  });
+
+  // --- Eval diff endpoint (Tier 6.3) ---
+  router.post('/diff', async (req, res) => {
+    const { idA, idB } = req.body;
+
+    if (typeof idA !== 'string' || typeof idB !== 'string') {
+      res.status(400).json({ error: 'idA and idB are required string fields' });
+      return;
+    }
+
+    try {
+      const resultA = await getEvalResult(idA);
+      const resultB = await getEvalResult(idB);
+
+      if (!resultA) {
+        res.status(404).json({ error: `Eval result "${idA}" not found` });
+        return;
+      }
+      if (!resultB) {
+        res.status(404).json({ error: `Eval result "${idB}" not found` });
+        return;
+      }
+
+      const diff = diffEvalResults(resultA, resultB);
+      res.json(diff);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Unknown error';
+      res.status(500).json({ error: message });
+    }
+  });
+
+  // --- Eval replay endpoint (Tier 6.4) ---
+  router.post('/replay', async (req, res) => {
+    const { evalId, pacingMs } = req.body;
+
+    if (typeof evalId !== 'string') {
+      res.status(400).json({ error: 'evalId is a required string field' });
+      return;
+    }
+
+    try {
+      const result = await getEvalResult(evalId);
+      if (!result) {
+        res.status(404).json({ error: `Eval result "${evalId}" not found` });
+        return;
+      }
+
+      if (result.transcript.length === 0) {
+        res.status(400).json({ error: 'Eval has no transcript to replay' });
+        return;
+      }
+
+      const delay = typeof pacingMs === 'number' && pacingMs > 0 ? pacingMs : 500;
+
+      // Respond immediately, then replay asynchronously
+      res.json({
+        ok: true,
+        evalId,
+        messageCount: result.transcript.length,
+        pacingMs: delay,
+      });
+
+      // Broadcast replay:started
+      broadcast({ type: 'replay:started', payload: { evalId, pacingMs: delay } });
+
+      // Replay messages with pacing
+      for (let i = 0; i < result.transcript.length; i++) {
+        const msg = result.transcript[i]!;
+        await new Promise((resolve) => setTimeout(resolve, delay));
+        broadcast({
+          type: 'replay:message',
+          payload: { ...msg, replayIndex: i, replayTotal: result.transcript.length },
+        });
+        // Also broadcast as normal message so it appears in the UI
+        const wsType = msg.role === 'user' ? 'user:message' : 'bot:message';
+        broadcast({ type: wsType, payload: msg });
+      }
+
+      broadcast({
+        type: 'replay:completed',
+        payload: { evalId, messageCount: result.transcript.length },
+      });
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Unknown error';
       res.status(500).json({ error: message });

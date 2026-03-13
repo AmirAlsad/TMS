@@ -161,7 +161,7 @@ You are chatting via SMS. Use the available tools to perform actions:
 Set goal_complete: true on your final send_message when your goal has been achieved.`;
   }
 
-  return `${base}
+  let prompt = `${base}
 
 ## Your Goal
 ${evalSpec.userBot.goal}
@@ -174,6 +174,27 @@ ${actionsSection}
 ## Special Instructions
 - If you have sent wait multiple times and the bot still hasn't completed the action, stop waiting and ask about the status or repeat your request instead.
 - Stay in character at all times. Write concise text messages, not formal paragraphs.`;
+
+  // Prior session context (Tier 4.4) — tell the user bot what NOT to mention
+  if (evalSpec.priorSession) {
+    const ps = evalSpec.priorSession;
+    if (ps.knownContext?.length) {
+      prompt += `\n\n## Prior Session Context — DO NOT MENTION`;
+      prompt += `\nThe bot (your trainer) should already know the following from prior conversations. Do NOT bring these up or remind the bot about them. The point of this test is to see if the bot remembers on its own:`;
+      for (const ctx of ps.knownContext) {
+        prompt += `\n- ${ctx}`;
+      }
+      prompt += `\nIf the bot fails to account for these things when relevant, that's the bot's problem, not yours. Stay in character and don't hint.`;
+    }
+  }
+
+  // Silence awareness (Tier 4.2) — tell the user bot about possible silence
+  if (evalSpec.silenceExpected) {
+    prompt += `\n\n## Silence Handling`;
+    prompt += `\nThe bot may choose to stay silent (not respond) at certain points. This is normal and expected behavior. If the bot goes silent after you send a conversation closer ("thanks", "cool", "bet"), do NOT keep trying to get a response — mark your goal as complete.`;
+  }
+
+  return prompt;
 }
 
 // --- Role flipping for transcript context ---
@@ -187,6 +208,15 @@ function buildTranscriptMessages(
   const entries: Entry[] = [];
 
   for (const msg of transcript) {
+    // Handle silence messages (Tier 4.2)
+    if (msg.silence) {
+      entries.push({
+        timestamp: msg.timestamp,
+        text: '[Bot chose not to respond]',
+        isUserBot: false,
+      });
+      continue;
+    }
     let text = msg.content;
     if (msg.quotedReply) {
       text = `[quoted ${msg.quotedReply.targetMessageId}: "${msg.quotedReply.quotedBody}"] ${text}`;

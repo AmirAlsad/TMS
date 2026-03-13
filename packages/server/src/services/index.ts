@@ -11,3 +11,5 @@ export { findProjectRoot } from './project-root.js';
 export { loadEvalSuite, listEvalSuites } from './suite-loader.js';
 export { generateBatchId, saveBatchRun, getBatchRun, listBatchRuns } from './batch-runs.js';
 export { getSpecHistory, getAllSpecHistories } from './eval-history.js';
+export { diffEvalResults } from './eval-diff.js';
+export { MessageBuffer, createMessageBuffer } from './message-buffer.js';

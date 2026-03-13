@@ -75,7 +75,7 @@ function WhatsAppTail({ isUser }: { isUser: boolean }) {
   );
 }
 
-/** SMS/iMessage tail — curved tail at bottom corner of last message in group */
+/** SMS tail — curved tail at bottom corner of last message in group */
 function SmsTail({ isUser }: { isUser: boolean }) {
   return (
     <svg
@@ -104,6 +104,7 @@ export function ChatBubble({
   const [showPicker, setShowPicker] = useState(false);
   const [hovered, setHovered] = useState(false);
 
+  // ALL useStore calls must come before any conditional return (Rules of Hooks)
   const readState = useStore((s) => s.messageReadStates[message.id]) ?? 'sent';
   const reactions = useStore((s) => s.messageReactions[message.id]) ?? [];
   const readReceiptMode = useStore((s) => s.readReceiptMode);
@@ -116,6 +117,24 @@ export function ChatBubble({
   const setReplyingTo = useStore((s) => s.setReplyingTo);
   const addReaction = useStore((s) => s.addReaction);
   const removeReaction = useStore((s) => s.removeReaction);
+
+  // --- Silence indicator ---
+  if (message.silence) {
+    return (
+      <div className="flex justify-center py-1 animate-slide-up">
+        <span
+          className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full
+                     text-[11px] font-medium text-slate-400 dark:text-slate-500
+                     bg-slate-100/60 dark:bg-slate-800/40"
+        >
+          <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M18.364 18.364A9 9 0 0 0 5.636 5.636m12.728 12.728A9 9 0 0 1 5.636 5.636m12.728 12.728L5.636 5.636" />
+          </svg>
+          Bot chose not to respond
+        </span>
+      </div>
+    );
+  }
 
   const time = new Date(message.timestamp).toLocaleTimeString([], {
     hour: '2-digit',
@@ -340,7 +359,7 @@ export function ChatBubble({
     );
   }
 
-  // --- SMS / iMessage ---
+  // --- SMS ---
   const userRadius = isFirstInGroup
     ? 'rounded-2xl rounded-br-md'
     : isLastInGroup
